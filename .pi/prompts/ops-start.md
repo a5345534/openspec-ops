@@ -1,0 +1,147 @@
+---
+description: Create or reuse a worktree/branch for an OpenSpec change (openspec-ops start)
+---
+
+# ops-start
+
+Ensure a **git workspace** exists for a change name.
+
+This prompt only runs `openspec-ops start`. It does **not** create OpenSpec
+artifacts and does **not** run `/opsx-propose`.
+
+**Input:** argument after `/ops-start` is the change name (kebab-case) or a description.
+**Provided arguments:** $@
+
+## Shared runtime rules
+
+### Resolve the binary
+
+Use the first match:
+
+1. `$OPENSPEC_OPS_BIN` if set and executable
+2. `command -v openspec-ops`
+3. If missing: **stop**. Tell the user to install/link `openspec-ops` from the openspec-ops repo (`npm install`, `npm run build`, `npm link`, or set `OPENSPEC_OPS_BIN`).
+
+Never invent a fallback that runs raw `git worktree` / `git switch`.
+
+### Always call with JSON
+
+```bash
+openspec-ops <command> ... --json
+```
+
+- Parse **stdout** as one JSON object.
+- Use **exit code** + `error.code` for control flow.
+- Do not scrape human prose for decisions.
+- Require `schemaVersion === 1`. If missing or different: warn that CLI/skill may be mismatched; prefer stop unless the user insists.
+
+### Success / error shapes
+
+Success:
+
+```json
+{ "schemaVersion": 1, "ok": true, "command": "<cmd>", "result": { } }
+```
+
+Failure:
+
+```json
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "<cmd>",
+  "error": { "code": "...", "message": "...", "details": {} }
+}
+```
+
+### Exit code table
+
+| Exit | Meaning | Agent behavior |
+|---|---|---|
+| 0 | success (incl. start reuse; doctor with issues) | Use `result` |
+| 1 | `usage` / `invalid_change_name` | Fix args / ask user for kebab-case name |
+| 2 | `not_a_git_repo` / `base_unresolved` / `primary_unresolved` | Explain environment; do not guess base |
+| 3 | conflicts (`path_occupied`, `path_not_worktree`, `branch_busy`, `branch_mismatch`, `ambiguous`) | Show `error.details`; stop; offer manual options |
+| 4 | `worktree_dirty` | Only expected from finish; ask before `--force` |
+| 5 | `not_found` | Suggest start or check name |
+| 10 | `git_failed` / `internal` | Show error; stop |
+
+### Hard guardrails (all ops-* helpers)
+
+- Do **not** wrap or replace `/opsx-propose`, `/opsx-apply`, `/opsx-archive`, `/opsx-sync`.
+- Do **not** run `openspec` CLI unless the **user** asked for an OpenSpec action in the same turn *after* workspace setup.
+- Do **not** `git commit`, `push`, open PRs, merge, or delete branches.
+- Do **not** pass `--force` unless the user clearly consents in this turn.
+- Prefer working directory = workspace `path` for later implementation commands; do not assume the chat cwd switched automatically.
+
+## Input handling
+
+- Prefer change name from `$@` when provided.
+- If `$@` is a description, derive kebab-case and **confirm** before CLI
+  (example: "add dark mode" → `add-dark-mode`).
+- Optional flags — pass through **only** if the user explicitly asked:
+  - `--branch <name>`
+  - `--path <path>`
+  - `--base <ref>`
+  - `--repo <path>`
+
+If the change name is missing/ambiguous, ask.
+
+## Steps
+
+1. Resolve the `openspec-ops` binary (see Shared runtime rules).
+2. Normalize/confirm the change name (CLI validates kebab-case).
+3. Run:
+
+   ```bash
+   openspec-ops start "<change>" [optional flags] --json
+   ```
+
+4. Handle outcomes:
+
+   | Condition | What to do |
+   |---|---|
+   | exit 0, `result.action=created` | Report created workspace |
+   | exit 0, `result.action=reused` | Report existing workspace (not an error) |
+   | exit 1 `invalid_change_name` | Ask for a valid kebab-case name |
+   | exit 2 `not_a_git_repo` | Tell user to run inside a git repo or pass `--repo` |
+   | exit 2 `base_unresolved` | Ask for explicit `--base` (e.g. `main` or `origin/main`) |
+   | exit 3 `branch_busy` | Show other path from details; do not force |
+   | exit 3 `path_not_worktree` / `path_occupied` / `branch_mismatch` | Show path conflict; suggest different `--path` or manual cleanup |
+   | exit 10 | Surface `error.message` / details; stop |
+
+5. On success, print:
+
+   ```text
+   Workspace ready
+   action:  <created|reused>
+   change:  <change>
+   branch:  <branch>
+   path:    <path>
+   changeDirExists: <true|false>
+   ```
+
+6. Next-step policy:
+
+   - If the user **only** asked to create/setup a worktree: **stop here**.
+   - If the user asked to **begin the change / propose / implement**: you MAY
+     continue with OpenSpec (`/opsx-propose`) **using `result.path` as cwd**.
+     Do not claim ops-start created proposal artifacts.
+
+7. If `changeDirExists` is `false`:
+
+   > No `openspec/changes/<change>` directory yet — normal before propose.
+
+## Guardrails
+
+- Idempotent reuse is success.
+- Never move/switch the primary branch as a side ritual.
+- Never create nested worktrees by hand under an existing linked worktree.
+- Do not chain `finish` after start.
+
+## Fixed phrases
+
+- Bin missing: `openspec-ops CLI not found. Install/link it or set OPENSPEC_OPS_BIN.`
+- Created: `Created worktree for <change> at <path> (branch <branch>).`
+- Reused: `Reused existing worktree for <change> at <path>.`
+- Handoff: `OpenSpec flow unchanged: /opsx-propose → /opsx-apply → /opsx-archive. Workspace helpers: /ops-start … /ops-finish.`

@@ -1,0 +1,175 @@
+## ADDED Requirements
+
+### Requirement: Four paired Pi skills and slash prompts exist
+The project SHALL provide Pi skills and matching slash prompts for workspace lifecycle orchestration:
+
+| Skill directory | Prompt file | CLI command |
+|---|---|---|
+| `.pi/skills/ops-start/` | `.pi/prompts/ops-start.md` | `openspec-ops start` |
+| `.pi/skills/ops-where/` | `.pi/prompts/ops-where.md` | `openspec-ops where` |
+| `.pi/skills/ops-finish/` | `.pi/prompts/ops-finish.md` | `openspec-ops finish` |
+| `.pi/skills/ops-doctor/` | `.pi/prompts/ops-doctor.md` | `openspec-ops doctor` |
+
+Each skill SHALL be a directory containing `SKILL.md` with frontmatter `name` matching the skill id (`ops-start`, `ops-where`, `ops-finish`, `ops-doctor`).
+
+Skill `description` fields MUST mention openspec-ops / worktree workspace intent and MUST NOT claim to replace OpenSpec propose/apply/archive.
+
+#### Scenario: Skill layout present
+- **WHEN** the change is implemented
+- **THEN** the four skill directories and four prompt files listed above exist in the repository
+
+#### Scenario: Naming does not use opsx prefix
+- **WHEN** listing the new skill names and prompt filenames
+- **THEN** they use the `ops-` prefix and not `opsx-`
+
+---
+
+### Requirement: Full-text self-contained documents
+Each skill `SKILL.md` and each prompt `ops-*.md` MUST be operationally self-contained.
+
+A document is operationally self-contained when an agent following only that file can:
+
+1. Resolve the `openspec-ops` binary
+2. Invoke the correct subcommand with `--json`
+3. Branch on exit codes and `error.code`
+4. Apply command-specific confirmations/guardrails
+
+Prompts MUST NOT reduce to a pointer such as “follow the skill file” without embedding the same runtime rules and steps.
+
+Skills MUST NOT require reading README or another skill file to perform the happy path.
+
+When shared rules or command steps change, all eight documents MUST be updated in the same change so capability stays equivalent between skill and prompt pairs.
+
+#### Scenario: Prompt includes shared runtime rules
+- **WHEN** reading `.pi/prompts/ops-start.md`
+- **THEN** the file contains binary resolution, `--json` requirement, exit code handling, and hard guardrails in-line
+
+#### Scenario: Skill includes shared runtime rules
+- **WHEN** reading `.pi/skills/ops-start/SKILL.md`
+- **THEN** the file contains the same classes of runtime rules as the matching prompt (binary resolution, JSON, exits, guardrails)
+
+---
+
+### Requirement: Shared runtime rules content
+Every ops skill and ops prompt SHALL instruct the agent to:
+
+1. Resolve binary in order: `$OPENSPEC_OPS_BIN` if set → `openspec-ops` on `PATH` → stop with install/link guidance
+2. Always pass `--json` on CLI invocations
+3. Parse a single JSON object from stdout and require `schemaVersion` equal to `1` (warn or stop on mismatch)
+4. Use exit codes `0|1|2|3|4|5|10` with the Phase 0 meanings (success; usage/invalid name; repo/base errors; conflicts; dirty; not found; git/internal)
+5. Prefer `error.code` over scraping `error.message` for control flow
+6. Never run raw `git worktree` / `git switch` as a substitute for the CLI
+7. Never replace or silently implement `/opsx-propose`, `/opsx-apply`, `/opsx-archive`, or `/opsx-sync`
+8. Never commit, push, open PRs, merge, or delete branches as part of these skills
+9. Never pass `--force` without explicit user consent in the current turn
+10. Prefer subsequent implementation/OpenSpec commands use the workspace `path` as cwd when known
+
+#### Scenario: Missing binary stops without git fallback
+- **WHEN** the agent follows an ops skill and `openspec-ops` cannot be resolved
+- **THEN** the instructions require stopping with install guidance
+- **AND** the instructions forbid falling back to manual `git worktree add`
+
+#### Scenario: JSON schema version pinned
+- **WHEN** the agent runs an ops CLI command per the skill
+- **THEN** the instructions require `--json` and `schemaVersion === 1` handling
+
+---
+
+### Requirement: ops-start orchestration behavior
+The ops-start skill and prompt SHALL instruct the agent to:
+
+- Accept a kebab-case change name or derive one from a description and confirm before running the CLI
+- Run `openspec-ops start <change> [user-requested flags only] --json`
+- Treat both `result.action=created` and `result.action=reused` as success
+- Surface conflicts (`branch_busy`, `path_not_worktree`, `path_occupied`, `branch_mismatch`, etc.) without destructive auto-repair
+- Report `path`, `branch`, `action`, and `changeDirExists`
+- If the user only requested workspace setup: stop after success reporting
+- If the user requested beginning a full change: allow continuing to OpenSpec propose as a **separate** step using `result.path` as cwd
+- State that missing `openspec/changes/<change>` before propose is normal
+
+#### Scenario: Start success reports path
+- **WHEN** start succeeds per the skill instructions
+- **THEN** the agent is directed to report the workspace path and branch to the user
+
+#### Scenario: Start does not imply propose completed
+- **WHEN** ops-start finishes successfully
+- **THEN** the instructions MUST NOT claim OpenSpec proposal artifacts were created by ops-start alone
+
+---
+
+### Requirement: ops-where orchestration behavior
+The ops-where skill and prompt SHALL instruct the agent to:
+
+- Require a change name (do not guess among multiple changes)
+- Run `openspec-ops where <change> --json` as a read-only operation
+- On `not_found` (exit 5), suggest ops-start / `/ops-start` and MUST NOT auto-run start unless the user asked to create the workspace
+- On success, report path, branch, dirty, and match basis
+
+#### Scenario: Where not found suggests start
+- **WHEN** where returns not_found per the skill
+- **THEN** the agent is directed to suggest creating a workspace with ops-start
+
+#### Scenario: Where does not finish or start as side effect
+- **WHEN** the user only asks where a workspace is
+- **THEN** the instructions limit the CLI side effects to `where` only
+
+---
+
+### Requirement: ops-finish orchestration behavior
+The ops-finish skill and prompt SHALL instruct the agent to:
+
+- Target worktree removal only (branch kept; not OpenSpec archive)
+- Recommend preflight `openspec-ops where <change> --json` when helpful
+- Soft-warn when dirty; require explicit consent before `--force`
+- Soft-warn when a change directory still appears present that finish does not archive
+- Run `openspec-ops finish <change> [--force] --json` only after needed confirmations
+- On success, state that the branch was kept and OpenSpec was not archived
+
+#### Scenario: Dirty finish requires consent for force
+- **WHEN** the worktree is dirty and the user has not consented to force removal
+- **THEN** the instructions require asking the user before passing `--force`
+
+#### Scenario: Finish is not archive
+- **WHEN** finish succeeds
+- **THEN** the instructions require communicating that OpenSpec archive was not performed
+
+---
+
+### Requirement: ops-doctor orchestration behavior
+The ops-doctor skill and prompt SHALL instruct the agent to:
+
+- Run `openspec-ops doctor [--repo] --json`
+- Treat exit 0 with warnings/issues as a normal completed check
+- Present primaryPath/worktreeRoot, summary counts, issues, and worktree inventory
+- MUST NOT automatically delete directories, prune worktrees, or run finish without user request
+- Direct change-specific cleanup toward ops-finish rather than ad-hoc `rm`
+
+#### Scenario: Doctor does not auto-fix
+- **WHEN** doctor reports `stale_worktree_dir` or other issues
+- **THEN** the instructions require reporting and optional manual suggestions only, without automatic destructive cleanup
+
+---
+
+### Requirement: OpenSpec boundary
+ops-* skills and prompts MUST remain a side path around OpenSpec:
+
+- They MUST NOT rename or shadow `/opsx-propose`, `/opsx-apply`, `/opsx-archive`, or `/opsx-sync`
+- They MUST NOT invoke the OpenSpec CLI as a required step of start/where/finish/doctor success paths
+- finish MUST be described as workspace cleanup, not spec archival
+
+#### Scenario: No opsx command replacement
+- **WHEN** comparing new prompt filenames to existing OpenSpec prompts
+- **THEN** new prompts use `ops-*.md` and existing `opsx-*.md` files remain the OpenSpec entrypoints
+
+---
+
+### Requirement: README documents Pi usage
+The root `README.md` SHALL document:
+
+- The mapping ` /ops-start` → OpenSpec `/opsx-*` → `/ops-finish`
+- That skills shell out to `openspec-ops` and require the CLI on `PATH` or `OPENSPEC_OPS_BIN`
+- Non-goals: no auto-hijack of OpenSpec commands; prompts/skills are full-text maintained in pairs
+
+#### Scenario: README mentions ops-start and ops-finish
+- **WHEN** reading the root README after the change
+- **THEN** it describes using ops-start before OpenSpec work and ops-finish for worktree cleanup

@@ -1,0 +1,111 @@
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
+import { isDirty } from "../git.js";
+import {
+  findChangeDir,
+  hasOpenspecTree,
+  inferChangeFromLeaf,
+  resolveRepoContext,
+} from "../resolve.js";
+import { printSuccess } from "../output.js";
+import type { DoctorIssue, DoctorResult, DoctorWorktree, GlobalOptions } from "../types.js";
+
+export function runDoctor(options: GlobalOptions): DoctorResult {
+  const ctx = resolveRepoContext(options.repo);
+  const issues: DoctorIssue[] = [];
+
+  const linked = ctx.worktrees.filter((w) => w.path !== ctx.primaryPath && !w.bare);
+  const worktrees: DoctorWorktree[] = linked.map((w) => {
+    const leaf = basename(w.path);
+    return {
+      path: w.path,
+      branch: w.branch,
+      head: w.head,
+      dirty: existsSync(w.path) ? isDirty(w.path) : false,
+      inferredChange: inferChangeFromLeaf(leaf),
+    };
+  });
+
+  for (const w of linked) {
+    if (!existsSync(w.path)) {
+      issues.push({
+        id: "missing_worktree_path",
+        severity: "error",
+        path: w.path,
+        message: "Registered worktree path is missing on disk",
+        hint: "Run git worktree prune",
+      });
+    }
+  }
+
+  if (existsSync(ctx.worktreeRoot)) {
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(ctx.worktreeRoot);
+    } catch {
+      entries = [];
+    }
+    const registered = new Set(ctx.worktrees.map((w) => w.path));
+    for (const name of entries) {
+      const full = join(ctx.worktreeRoot, name);
+      let isDir = false;
+      try {
+        isDir = statSync(full).isDirectory();
+      } catch {
+        continue;
+      }
+      if (!isDir) continue;
+      if (!registered.has(full)) {
+        issues.push({
+          id: "stale_worktree_dir",
+          severity: "warning",
+          path: full,
+          message: "Directory exists but is not a registered git worktree",
+          hint: "Remove manually or re-register",
+        });
+      }
+    }
+  }
+
+  if (hasOpenspecTree(ctx.primaryPath, ctx.worktrees)) {
+    for (const wt of worktrees) {
+      if (!wt.inferredChange) continue;
+      if (!existsSync(wt.path)) continue;
+      const changeDir = findChangeDir(wt.inferredChange, wt.path, ctx.primaryPath);
+      if (!changeDir.exists) {
+        issues.push({
+          id: "worktree_without_change_dir",
+          severity: "info",
+          path: wt.path,
+          message: `No openspec/changes/${wt.inferredChange} directory found in worktree or primary`,
+        });
+      }
+    }
+  }
+
+  const summary = {
+    error: issues.filter((i) => i.severity === "error").length,
+    warning: issues.filter((i) => i.severity === "warning").length,
+    info: issues.filter((i) => i.severity === "info").length,
+  };
+
+  const result: DoctorResult = {
+    primaryPath: ctx.primaryPath,
+    worktreeRoot: ctx.worktreeRoot,
+    worktrees,
+    issues,
+    summary,
+  };
+
+  printSuccess("doctor", result, {
+    json: options.json,
+    humanLines: [
+      `primary: ${result.primaryPath}`,
+      `root:    ${result.worktreeRoot}`,
+      `worktrees: ${result.worktrees.length}`,
+      `issues:  error=${summary.error} warning=${summary.warning} info=${summary.info}`,
+      ...issues.map((i) => `- [${i.severity}] ${i.id}: ${i.path}`),
+    ],
+  });
+  return result;
+}
