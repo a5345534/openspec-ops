@@ -5,8 +5,12 @@
  *    /opsx-propose → ensure worktree via CLI → release stock propose
  *    Policy: OPENSPEC_OPS_AUTO_START=on|ask|off (default on)
  *
- * 2) Auto-review inject (optional, after successful ensure):
- *    OPENSPEC_OPS_AUTO_REVIEW=on|off (default on)
+ * 2) Auto-review follow-up turn (independent of ensure success):
+ *    /opsx-propose <kebab> → arm sticky review watch
+ *    agent_settled → if proposal.md ready → sendUserMessage("/ops-review …", followUp)
+ *    Ensure hard-abort → clear review watch (no zombie)
+ *    Policy: OPENSPEC_OPS_AUTO_REVIEW=on|off (default on)
+ *    Entrypoint: /ops-review (project prompt .pi/prompts/ops-review.md)
  *
  * 3) Auto-finish orphan reclaim (post-archive watch):
  *    /opsx-archive <kebab> → arm sticky watch (never finish at input)
@@ -18,7 +22,7 @@
  * Binary: OPENSPEC_OPS_BIN → PATH → <project>/bin/openspec-ops
  *
  * Spike (Pi): agent_settled handlers receive ExtensionContext with hasUI + ui.confirm.
- * Under policy ask without UI, orphan gate skips finish (no silent reclaim).
+ * sendUserMessage(…, { deliverAs: "followUp" }) schedules a new turn after settle.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { dirname, resolve } from "node:path";
@@ -38,6 +42,11 @@ import {
   parseArchiveChangeName,
   parseAutoFinishPolicy,
 } from "../../src/auto-finish/index.js";
+import {
+  buildOpsReviewFollowUpMessage,
+  isProposalReady,
+  parseAutoReviewPolicy,
+} from "../../src/auto-review/index.js";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(EXT_DIR, "../..");
@@ -48,24 +57,17 @@ type WorkspaceState = {
   branch: string;
 };
 
-type ReviewPolicy = "on" | "off";
-
-function parseReviewPolicy(raw: string | undefined): ReviewPolicy {
-  if (raw == null || raw.trim() === "") return "on";
-  const v = raw.trim().toLowerCase();
-  return v === "off" ? "off" : "on";
-}
-
 export default function (pi: ExtensionAPI) {
   let active: WorkspaceState | null = null;
-  /** One-shot flag: propose just ran, auto-review on next before_agent_start. */
-  let pendingReviewChange: string | null = null;
+  /** Sticky watches for ops-review follow-up turns (change names). */
+  const reviewWatches = new Set<string>();
   /** Sticky watches for orphan finish reclaim (change names). */
   const finishWatches = new Set<string>();
   /** Re-entrancy guard while settle evaluation runs async work. */
   let settleRunning = false;
 
   pi.on("input", async (event, ctx) => {
+    // Never re-arm from extension-injected messages (e.g. followUp /ops-review)
     if (event.source === "extension") {
       return { action: "continue" };
     }
@@ -80,7 +82,6 @@ export default function (pi: ExtensionAPI) {
         if (change) {
           const bin = resolveOpsBin({ projectRoot: PROJECT_ROOT });
           if (bin) {
-            // Optional precheck: do not arm if worktree already gone
             const whereRes = runOps(bin, ["where", change], { cwd: ctx.cwd });
             const notFound =
               whereRes.code === 5 || whereRes.json?.error?.code === "not_found";
@@ -92,7 +93,6 @@ export default function (pi: ExtensionAPI) {
               );
             }
           } else {
-            // Missing bin: still do not block archive; skip watch
             ctx.ui.notify(
               "openspec-ops CLI not found; skipping post-archive worktree watch (archive continues).",
               "warning",
@@ -100,28 +100,36 @@ export default function (pi: ExtensionAPI) {
           }
         }
       }
-      // Always continue archive input
-      // (fall through only if not also propose — archive and propose are distinct)
       return { action: "continue" };
     }
 
-    // ── Propose ensure ───────────────────────────────────────────────
+    // ── Propose: review arm (ensure-independent) + ensure ────────────
     if (!isProposeIntent(text)) {
       return { action: "continue" };
     }
 
-    const policy = parseAutoStartPolicy(process.env.OPENSPEC_OPS_AUTO_START);
-    if (policy === "off") {
+    const change = parseProposeChangeName(text);
+    const reviewPolicy = parseAutoReviewPolicy(process.env.OPENSPEC_OPS_AUTO_REVIEW);
+
+    // Arm review watch before ensure; never handle propose for review reasons
+    if (change && reviewPolicy === "on") {
+      reviewWatches.add(change);
+    }
+
+    const ensurePolicy = parseAutoStartPolicy(process.env.OPENSPEC_OPS_AUTO_START);
+    if (ensurePolicy === "off") {
+      // Review may still be armed; propose continues without ensure
       return { action: "continue" };
     }
 
-    const change = parseProposeChangeName(text);
     if (!change) {
       return { action: "continue" };
     }
 
     const bin = resolveOpsBin({ projectRoot: PROJECT_ROOT });
     if (!bin) {
+      // Ensure aborts propose → clear review watch (zombie prevention)
+      reviewWatches.delete(change);
       ctx.ui.notify(
         "openspec-ops CLI not found (set OPENSPEC_OPS_BIN or install/link bin). Propose aborted.",
         "error",
@@ -132,7 +140,7 @@ export default function (pi: ExtensionAPI) {
     const outcome = await ensureWorkspace(change, {
       bin,
       cwd: ctx.cwd,
-      policy,
+      policy: ensurePolicy,
       confirmCreate: async (ch) => {
         if (!ctx.hasUI) return false;
         return Boolean(
@@ -145,6 +153,7 @@ export default function (pi: ExtensionAPI) {
     });
 
     if (outcome.status === "skipped") {
+      // Propose continues (e.g. user declined create under ask) — keep review watch
       if (outcome.reason === "user_declined") {
         ctx.ui.notify("Skipping worktree. Propose will use current directory.", "info");
       }
@@ -152,6 +161,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (outcome.status === "error") {
+      reviewWatches.delete(change);
       ctx.ui.notify(
         `Workspace ensure failed (${outcome.code}): ${outcome.message}. Propose aborted.`,
         "error",
@@ -170,75 +180,97 @@ export default function (pi: ExtensionAPI) {
       "info",
     );
 
-    if (parseReviewPolicy(process.env.OPENSPEC_OPS_AUTO_REVIEW) !== "off") {
-      pendingReviewChange = outcome.change;
-    }
-
     return { action: "continue" };
   });
 
   pi.on("before_agent_start", async () => {
-    if (!active && !pendingReviewChange) return;
-
-    const lines: string[] = [];
-    if (active) {
-      lines.push(
-        `Active openspec-ops workspace: change=${active.change} path=${active.path} branch=${active.branch}.`,
-        `OpenSpec propose/apply/archive semantics are unchanged; workspace was ensured by harness only.`,
-      );
-    }
-
-    if (pendingReviewChange) {
-      const change = pendingReviewChange;
-      pendingReviewChange = null;
-      lines.push(
-        `Change "${change}" was just proposed. ` +
-          `After presenting the propose results, AUTOMATICALLY run the ops-review skill on this change ` +
-          `(read .pi/skills/ops-review/SKILL.md for detailed instructions) and include the review findings ` +
-          `in your response. Keep findings concise: max 5, prioritized by impact. ` +
-          `If propose failed and no artifacts exist, skip review.`,
-      );
-    }
-
-    if (lines.length === 0) return;
+    // Workspace path hint only — no same-turn review inject
+    if (!active) return;
 
     return {
       message: {
         customType: "openspec-ops-workspace",
-        content: lines.join("\n\n"),
+        content: [
+          `Active openspec-ops workspace: change=${active.change} path=${active.path} branch=${active.branch}.`,
+          `OpenSpec propose/apply/archive semantics are unchanged; workspace was ensured by harness only.`,
+        ].join("\n\n"),
         display: true,
       },
     };
   });
 
-  // ── Orphan finish evaluation at settle ─────────────────────────────
+  // ── Settle: review follow-up + orphan finish ───────────────────────
   pi.on("agent_settled", async (_event, ctx) => {
     if (settleRunning) return;
-    if (finishWatches.size === 0) return;
-
-    const policy = parseAutoFinishPolicy(process.env.OPENSPEC_OPS_AUTO_FINISH);
-    if (policy === "off") {
-      finishWatches.clear();
-      return;
-    }
-
-    const bin = resolveOpsBin({ projectRoot: PROJECT_ROOT });
-    if (!bin) {
-      ctx.ui.notify(
-        "openspec-ops CLI not found; cannot reclaim watched worktrees (archive unaffected).",
-        "warning",
-      );
-      return;
-    }
+    if (reviewWatches.size === 0 && finishWatches.size === 0) return;
 
     settleRunning = true;
     try {
+      // Review follow-up turns
+      const reviewPolicy = parseAutoReviewPolicy(process.env.OPENSPEC_OPS_AUTO_REVIEW);
+      if (reviewPolicy === "off") {
+        reviewWatches.clear();
+      } else if (reviewWatches.size > 0) {
+        const roots = [PROJECT_ROOT, ctx.cwd, active?.path].filter(
+          (r): r is string => Boolean(r),
+        );
+        // unique roots
+        const uniqueRoots = [...new Set(roots.map((r) => resolve(r)))];
+
+        for (const change of [...reviewWatches]) {
+          if (!isProposalReady(change, uniqueRoots)) {
+            continue; // keep watch
+          }
+          // One-shot: clear before send to prevent double fire
+          reviewWatches.delete(change);
+          const msg = buildOpsReviewFollowUpMessage(change);
+          try {
+            if (typeof pi.sendUserMessage !== "function") {
+              ctx.ui.notify(
+                `Auto-review: sendUserMessage unavailable; run ${msg} manually.`,
+                "warning",
+              );
+              continue;
+            }
+            pi.sendUserMessage(msg, { deliverAs: "followUp" });
+            ctx.ui.notify(
+              `Auto-review: scheduled follow-up turn (${msg}).`,
+              "info",
+            );
+          } catch (err) {
+            const m = err instanceof Error ? err.message : String(err);
+            ctx.ui.notify(
+              `Auto-review: failed to schedule follow-up (${m}). Run ${msg} manually.`,
+              "warning",
+            );
+          }
+        }
+      }
+
+      // Orphan finish evaluation
+      if (finishWatches.size === 0) return;
+
+      const finishPolicy = parseAutoFinishPolicy(process.env.OPENSPEC_OPS_AUTO_FINISH);
+      if (finishPolicy === "off") {
+        finishWatches.clear();
+        return;
+      }
+
+      const bin = resolveOpsBin({ projectRoot: PROJECT_ROOT });
+      if (!bin) {
+        ctx.ui.notify(
+          "openspec-ops CLI not found; cannot reclaim watched worktrees (archive unaffected).",
+          "warning",
+        );
+        return;
+      }
+
       const watched = [...finishWatches];
       for (const change of watched) {
         const outcome = await evaluateWatchedChange(change, {
           bin,
           cwd: ctx.cwd,
-          policy,
+          policy: finishPolicy,
           hasUI: ctx.hasUI,
           confirmFinish: async (ch, path, branch) => {
             if (!ctx.hasUI) return false;
@@ -268,7 +300,6 @@ export default function (pi: ExtensionAPI) {
         }
 
         if (outcome.kind === "finish_error") {
-          // Keep watch so a later settle can retry; notify with code
           ctx.ui.notify(
             `Finish failed for "${change}" (${outcome.code}): ${outcome.message}. Archive unaffected.`,
             "error",

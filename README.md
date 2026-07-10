@@ -153,21 +153,28 @@ When you type `/opsx-propose <kebab-change>` (or `/opsx:propose …`):
 export OPENSPEC_OPS_AUTO_START=off
 ```
 
-### Auto-review (after propose)
+### Auto-review (follow-up turn after propose)
 
-After a successful ensure on slash-propose, the extension may inject a
-review instruction so the agent runs **ops-review** on the new artifacts.
+Schedules a **new agent turn** to run **ops-review** when propose artifacts are ready—not a same-turn side note, and not a mechanical review CLI.
+
+1. **Watch arm** (v1): `/opsx-propose <kebab-name>` (or `/opsx:propose …`) with parseable name and policy `on` → sticky review watch (**independent of ensure success**; still arms when `AUTO_START=off` / ensure skipped)
+2. **Ensure hard-abort** (missing bin / conflict `handled`): clears that review watch (no zombie)
+3. **Check points**: each `agent_settled` while review watches exist
+4. **Readiness (v1):** `openspec/changes/<change>/proposal.md` exists (project root, cwd, and/or active workspace path)
+5. When ready → clear watch → `sendUserMessage("/ops-review <change>", { deliverAs: "followUp" })` → new turn expands ops-review
+6. When not ready → keep watch (multi-turn propose safe)
 
 | `OPENSPEC_OPS_AUTO_REVIEW` | Behavior |
 |---|---|
-| `on` (default) | Auto-review inject after ensure-on-propose |
-| `off` | No auto-review; use `/ops-review <change>` manually |
+| `on` (default) | Arm on slash-propose + follow-up `/ops-review` when ready |
+| `off` | No arm; use `/ops-review <change>` manually |
 
 ```bash
 export OPENSPEC_OPS_AUTO_REVIEW=off
 ```
 
-Note: review inject is currently coupled to slash `/opsx-propose` + successful ensure (not every propose path).
+- Review body remains the **ops-review** skill/prompt (LLM). No `openspec-ops review` CLI.
+- v1 requires kebab change name on the propose slash to arm (skill-path propose is not detected).
 
 ### Auto-finish (orphan worktree reclaim)
 
@@ -203,8 +210,8 @@ export OPENSPEC_OPS_AUTO_FINISH=on    # aggressive clean reclaim
 
 - If ensure fails (e.g. `branch_busy`), propose does **not** continue; the error code is shown.
 - Archive path is **fail-open**: missing CLI / finish errors never cancel archive.
-- If propose fails and no artifacts exist, auto-review skips gracefully.
-- After auto-review runs once, it won't repeat on subsequent turns.
+- Auto-review fires at most once per arm (watch cleared when follow-up is scheduled).
+- If `proposal.md` never appears, the review watch stays until policy off or a later ready settle; ensure abort clears the watch.
 
 Reload Pi after pulling (`/reload`) so the extension is picked up from `.pi/extensions/`.
 
@@ -222,6 +229,7 @@ Reload Pi after pulling (`/reload`) so the extension is picked up from `.pi/exte
 - Pi ops skills/prompts: archived `add-pi-ops-skills`
 - Auto-ensure on propose: archived `add-pi-auto-ensure-on-propose`
 - Auto-finish on archive (orphan reclaim): archived `add-pi-auto-finish-on-archive`
+- Auto-review follow-up turn: archived `rebind-auto-review-follow-up-turn`
 
 ## License
 
