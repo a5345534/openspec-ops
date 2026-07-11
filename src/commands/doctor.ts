@@ -82,6 +82,32 @@ export function runDoctor(options: GlobalOptions): DoctorResult {
           path: wt.path,
           message: `No openspec/changes/${wt.inferredChange} directory found in worktree or primary`,
         });
+        if (wt.dirty) {
+          issues.push({
+            id: "leftover_dirty_worktree",
+            severity: "warning",
+            path: wt.path,
+            message: `Worktree for ${wt.inferredChange} is dirty and has no active change dir (possible post-archive leftover)`,
+            hint: "Commit/ship the branch, or openspec-ops finish --force with explicit consent",
+          });
+        }
+      } else {
+        // change exists only on primary while worktree is registered
+        const onWt = existsSync(
+          join(wt.path, "openspec", "changes", wt.inferredChange),
+        );
+        const onPrimary = existsSync(
+          join(ctx.primaryPath, "openspec", "changes", wt.inferredChange),
+        );
+        if (onPrimary && !onWt) {
+          issues.push({
+            id: "artifacts_on_primary_only",
+            severity: "warning",
+            path: wt.path,
+            message: `Change ${wt.inferredChange} artifacts are on primary only while worktree exists`,
+            hint: "Prefer writing under worktree path from openspec-ops where; see docs/snippets/worktree-alignment-block.md",
+          });
+        }
       }
     }
   }

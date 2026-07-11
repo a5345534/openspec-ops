@@ -31,3 +31,21 @@ Once kebab-case change name `<name>` is known:
 Tip: `alias openspec=openspec-ops-intercept` with `OPENSPEC_REAL_BIN` set so `openspec new change` ensures before scaffold.
 <!-- openspec-ops:worktree-alignment END -->
 ```
+
+## Apply (paste into **your** apply skill if desired)
+
+```markdown
+<!-- openspec-ops:worktree-alignment BEGIN -->
+## openspec-ops worktree alignment (apply)
+
+Once change name `<name>` is known:
+
+1. `openspec-ops where "<name>" --json` (or `start` if missing)
+2. On success: use `result.path` as **cwd** for implementation edits and OpenSpec CLI for that change.
+3. If alignment required and where/start fails: STOP rather than implementing only on primary by accident.
+
+**ensure/start does NOT switch process cwd.**
+
+Default delivery order: **merge → archive → finish** (ship/PR is separate; openspec-ops does not auto-merge).
+<!-- openspec-ops:worktree-alignment END -->
+```

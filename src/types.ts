@@ -157,7 +157,9 @@ export interface DoctorIssue {
     | "ops_bin_missing"
     | "openspec_not_intercept"
     | "openspec_real_bin_unset"
-    | "propose_skill_alignment_markers_missing";
+    | "propose_skill_alignment_markers_missing"
+    | "leftover_dirty_worktree"
+    | "artifacts_on_primary_only";
   severity: "error" | "warning" | "info";
   path: string;
   message: string;

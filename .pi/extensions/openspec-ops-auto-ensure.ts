@@ -30,7 +30,10 @@ import { fileURLToPath } from "node:url";
 
 import {
   ensureWorkspace,
+  isApplyIntent,
+  isPathInside,
   isProposeIntent,
+  parseApplyChangeName,
   parseAutoStartPolicy,
   parseProposeChangeName,
   resolveOpsBin,
@@ -61,6 +64,8 @@ type WorkspaceState = {
   change: string;
   path: string;
   branch: string;
+  /** propose | apply | archive — shapes REQUIRED handoff text */
+  mode: "propose" | "apply" | "archive";
 };
 
 export default function (pi: ExtensionAPI) {
@@ -82,36 +87,121 @@ export default function (pi: ExtensionAPI) {
 
     const text = event.text ?? "";
 
-    // ── Archive watch arm (fail-open; never finish here) ─────────────
+    // ── Archive: path handoff (always when possible) + finish watch ──
+    // Handoff is independent of AUTO_FINISH; finish watch respects policy.
+    // Never block archive (always continue).
     if (isArchiveIntent(text)) {
+      const change = parseArchiveChangeName(text);
       const finishPolicy = parseAutoFinishPolicy(process.env.OPENSPEC_OPS_AUTO_FINISH);
-      if (finishPolicy !== "off") {
-        const change = parseArchiveChangeName(text);
-        if (change) {
-          const bin = resolveOpsBin({ projectRoot: PROJECT_ROOT });
-          if (bin) {
-            const whereRes = runOps(bin, ["where", change], { cwd: ctx.cwd });
-            const notFound =
-              whereRes.code === 5 || whereRes.json?.error?.code === "not_found";
-            if (!notFound) {
+      const bin = resolveOpsBin({ projectRoot: PROJECT_ROOT });
+
+      if (change) {
+        if (bin) {
+          const whereRes = runOps(bin, ["where", change], { cwd: ctx.cwd });
+          const notFound =
+            whereRes.code === 5 || whereRes.json?.error?.code === "not_found";
+          if (!notFound && whereRes.json?.ok) {
+            const wtPath = String(whereRes.json.result?.path ?? "");
+            const changeDirPath = String(whereRes.json.result?.changeDirPath ?? "");
+            // Prefer W only when active changeDir lives under worktree (pre-merge).
+            // Never block primary/mainline archive after merge.
+            if (
+              wtPath &&
+              changeDirPath &&
+              isPathInside(wtPath, changeDirPath)
+            ) {
+              active = {
+                change,
+                path: wtPath,
+                branch: String(whereRes.json.result?.branch ?? change),
+                mode: "archive",
+              };
+              ctx.ui.notify(
+                `Archive handoff: change dir is under worktree ${wtPath} — prefer that cwd for archive ops. Default loop after merge archives on mainline checkout (primary); worktree existence alone must not block primary archive.`,
+                "info",
+              );
+            }
+            if (finishPolicy !== "off") {
               finishWatches.add(change);
               ctx.ui.notify(
                 `Watching worktree for "${change}" (orphan reclaim after change inactive).`,
                 "info",
               );
             }
-          } else {
-            ctx.ui.notify(
-              "openspec-ops CLI not found; skipping post-archive worktree watch (archive continues).",
-              "warning",
-            );
           }
+        } else if (finishPolicy !== "off") {
+          ctx.ui.notify(
+            "openspec-ops CLI not found; skipping post-archive worktree watch (archive continues).",
+            "warning",
+          );
         }
       }
       return { action: "continue" };
     }
 
-    // ── Propose: review arm (ensure-independent) + ensure ────────────
+    // ── Apply: where/start + REQUIRED path (fail-closed when alignment required)
+    if (isApplyIntent(text)) {
+      const change = parseApplyChangeName(text);
+      if (!change) {
+        ctx.ui.notify(
+          "No kebab change name on apply; worktree binding waits until a name is known.",
+          "info",
+        );
+        return { action: "continue" };
+      }
+      const ensurePolicy = parseAutoStartPolicy(process.env.OPENSPEC_OPS_AUTO_START);
+      if (ensurePolicy === "off") {
+        return { action: "continue" };
+      }
+      const bin = resolveOpsBin({ projectRoot: PROJECT_ROOT });
+      if (!bin) {
+        ctx.ui.notify(
+          "openspec-ops CLI not found (set OPENSPEC_OPS_BIN or install/link bin). Apply aborted (alignment required).",
+          "error",
+        );
+        return { action: "handled" };
+      }
+      const outcome = await ensureWorkspace(change, {
+        bin,
+        cwd: ctx.cwd,
+        policy: ensurePolicy,
+        confirmCreate: async (ch) => {
+          if (!ctx.hasUI) return false;
+          return Boolean(
+            await ctx.ui.confirm(
+              "Create worktree?",
+              `Create/reuse openspec-ops worktree for "${ch}" before apply?`,
+            ),
+          );
+        },
+      });
+      if (outcome.status === "skipped") {
+        if (outcome.reason === "user_declined") {
+          ctx.ui.notify("Skipping worktree. Apply will use current directory.", "info");
+        }
+        return { action: "continue" };
+      }
+      if (outcome.status === "error") {
+        ctx.ui.notify(
+          `Workspace ensure failed (${outcome.code}): ${outcome.message}. Apply aborted.`,
+          "error",
+        );
+        return { action: "handled" };
+      }
+      active = {
+        change: outcome.change,
+        path: outcome.path,
+        branch: outcome.branch,
+        mode: "apply",
+      };
+      ctx.ui.notify(
+        `Workspace ready @ ${outcome.path} (${outcome.action}). Continuing apply…`,
+        "info",
+      );
+      return { action: "continue" };
+    }
+
+    // ── Propose: review arm + ensure ─────────────────────────────────
     if (!isProposeIntent(text)) {
       return { action: "continue" };
     }
@@ -119,7 +209,6 @@ export default function (pi: ExtensionAPI) {
     const change = parseProposeChangeName(text);
     const reviewPolicy = parseAutoReviewPolicy(process.env.OPENSPEC_OPS_AUTO_REVIEW);
 
-    // Arm review watch before ensure; never handle propose for review reasons
     if (change && reviewPolicy === "on") {
       reviewWatches.add(change);
     }
@@ -134,13 +223,11 @@ export default function (pi: ExtensionAPI) {
 
     const ensurePolicy = parseAutoStartPolicy(process.env.OPENSPEC_OPS_AUTO_START);
     if (ensurePolicy === "off") {
-      // Review may still be armed; propose continues without ensure
       return { action: "continue" };
     }
 
     const bin = resolveOpsBin({ projectRoot: PROJECT_ROOT });
     if (!bin) {
-      // Ensure aborts propose → clear review watch (zombie prevention)
       reviewWatches.delete(change);
       ctx.ui.notify(
         "openspec-ops CLI not found (set OPENSPEC_OPS_BIN or install/link bin). Propose aborted.",
@@ -165,7 +252,6 @@ export default function (pi: ExtensionAPI) {
     });
 
     if (outcome.status === "skipped") {
-      // Propose continues (e.g. user declined create under ask) — keep review watch
       if (outcome.reason === "user_declined") {
         ctx.ui.notify("Skipping worktree. Propose will use current directory.", "info");
       }
@@ -185,6 +271,7 @@ export default function (pi: ExtensionAPI) {
       change: outcome.change,
       path: outcome.path,
       branch: outcome.branch,
+      mode: "propose",
     };
 
     ctx.ui.notify(
@@ -199,14 +286,35 @@ export default function (pi: ExtensionAPI) {
     // Workspace path handoff — REQUIRED write root (ensure does not chdir)
     if (!active) return;
 
+    const lines = [
+      `Active openspec-ops workspace: change=${active.change} path=${active.path} branch=${active.branch} mode=${active.mode}.`,
+    ];
+    if (active.mode === "archive") {
+      lines.push(
+        `REQUIRED (pre-merge): Prefer workspace path ${active.path} for archive-related OpenSpec ops for change "${active.change}" because the active change dir is under this worktree.`,
+        `Default delivery order is merge → archive on mainline checkout (often primary) → finish. Do NOT block primary/mainline archive solely because a worktree still exists after merge.`,
+      );
+    } else if (active.mode === "apply") {
+      lines.push(
+        `REQUIRED: Implementation file writes and OpenSpec CLI for change "${active.change}" MUST use workspace path ${active.path} (tool cwd or cd).`,
+      );
+    } else {
+      lines.push(
+        `REQUIRED: All OpenSpec change artifact writes and preferred implementation writes for change "${active.change}" MUST use workspace path ${active.path} (e.g. tool cwd or cd). Do NOT write openspec/changes/${active.change}/ only under the primary checkout.`,
+      );
+    }
+    lines.push(
+      `Note: ensure/start does NOT switch the process cwd by itself. OpenSpec propose/apply/archive semantics are unchanged; workspace was ensured by harness only.`,
+    );
+
+    // One-shot handoff: clear after inject so later turns do not re-assert stale mode
+    const content = lines.join("\n\n");
+    active = null;
+
     return {
       message: {
         customType: "openspec-ops-workspace",
-        content: [
-          `Active openspec-ops workspace: change=${active.change} path=${active.path} branch=${active.branch}.`,
-          `REQUIRED: All OpenSpec change artifact writes and preferred implementation writes for change "${active.change}" MUST use workspace path ${active.path} (e.g. tool cwd or cd). Do NOT write openspec/changes/${active.change}/ only under the primary checkout.`,
-          `Note: ensure/start does NOT switch the process cwd by itself. OpenSpec propose/apply/archive semantics are unchanged; workspace was ensured by harness only.`,
-        ].join("\n\n"),
+        content,
         display: true,
       },
     };
@@ -218,6 +326,8 @@ export default function (pi: ExtensionAPI) {
 
     settleRunning = true;
     try {
+      // Drop any leftover active binding after the turn (handoff already one-shot)
+      active = null;
       // Review follow-up: slash watches + settle-time discovery (no slash name required)
       const reviewPolicy = parseAutoReviewPolicy(process.env.OPENSPEC_OPS_AUTO_REVIEW);
       if (reviewPolicy === "off") {
@@ -340,7 +450,10 @@ export default function (pi: ExtensionAPI) {
           case "notify_dirty_clear":
             finishWatches.delete(change);
             ctx.ui.notify(
-              `Skipped auto-finish for "${change}": worktree is dirty. Commit/stash or /ops-finish with consent for --force.`,
+              `Skipped auto-finish for "${change}": worktree is dirty. ` +
+                `Next: commit/push/PR on this branch (ops-ship when available), or ` +
+                `openspec-ops finish ${change} --force only with explicit consent. ` +
+                `Auto-finish never commits or merges.`,
               "warning",
             );
             break;
@@ -387,6 +500,7 @@ export default function (pi: ExtensionAPI) {
           change: outcome.change,
           path: outcome.path,
           branch: outcome.branch,
+          mode: "propose",
         };
         ctx.ui.notify(`Workspace @ ${outcome.path} (${outcome.action})`, "info");
       }

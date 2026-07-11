@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   ensureWorkspace,
+  isApplyIntent,
+  isPathInside,
   isProposeIntent,
+  parseApplyChangeName,
   parseAutoStartPolicy,
   parseProposeChangeName,
   type RunOpsResult,
@@ -50,6 +53,42 @@ describe("propose intent and change name", () => {
     expect(parseProposeChangeName("/opsx-propose")).toBeNull();
     expect(parseProposeChangeName("/opsx-propose Add_Dark")).toBeNull();
     expect(parseProposeChangeName("/opsx-explore add-dark-mode")).toBeNull();
+  });
+});
+
+describe("apply intent and change name", () => {
+  it("detects opsx-apply forms", () => {
+    expect(isApplyIntent("/opsx-apply add-dark-mode")).toBe(true);
+    expect(isApplyIntent("/opsx:apply foo")).toBe(true);
+  });
+
+  it("does not treat propose as apply", () => {
+    expect(isApplyIntent("/opsx-propose add-dark-mode")).toBe(false);
+  });
+
+  it("parses apply change name", () => {
+    expect(parseApplyChangeName("/opsx-apply add-dark-mode")).toBe("add-dark-mode");
+    expect(parseApplyChangeName("/opsx-apply")).toBeNull();
+  });
+});
+
+describe("archive intent name", () => {
+  it("detects archive slash via auto-finish re-export surface", async () => {
+    const { isArchiveIntent, parseArchiveChangeName } = await import(
+      "../src/auto-finish/index.js",
+    );
+    expect(isArchiveIntent("/opsx-archive foo-bar")).toBe(true);
+    expect(parseArchiveChangeName("/opsx-archive foo-bar")).toBe("foo-bar");
+    expect(isArchiveIntent("/opsx:archive foo-bar")).toBe(true);
+  });
+});
+
+describe("isPathInside", () => {
+  it("detects nested paths", () => {
+    expect(isPathInside("/repo/.worktrees/c", "/repo/.worktrees/c/openspec/changes/c")).toBe(
+      true,
+    );
+    expect(isPathInside("/repo/.worktrees/c", "/repo/openspec/changes/c")).toBe(false);
   });
 });
 

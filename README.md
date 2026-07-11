@@ -10,6 +10,33 @@ OpenSpec 操作自动化层（旁路增强，不修改 OpenSpec 本体）。
 - **外挂** 在既有 OpenSpec 流程之上
 - 先从 **worktree 相关自动化** 切入，再逐步扩展其他操作
 
+## Recommended delivery loop
+
+Default order (OpenSpec team-compatible; **merge before archive**):
+
+```text
+openspec-ops start / auto-ensure / intercept
+        │
+/opsx-propose          plan artifacts in worktree W
+        │
+/ops-review            optional plan quality gate
+        │
+/opsx-apply            implement in W (extension binds path when name known)
+        │
+git commit + PR        (future: ops-ship — not in core finish)
+        │
+review + merge → main
+        │
+/opsx-archive          fold specs; default on mainline checkout after merge
+        │
+openspec-ops finish    remove worktree when clean (never auto --force if dirty;
+                       never commit/merge)
+```
+
+- **ensure ≠ cwd** — skills/extension must use `where.path` explicitly ([snippet](docs/snippets/worktree-alignment-block.md)).
+- **Package is pure sidecar** — ships `ops-*` skills only; does not replace project `openspec-*` / `opsx-*`.
+- **Archive-before-merge** is not the default (risk of specs/code split).
+
 ## Phase 0: workspace lifecycle CLI
 
 `openspec-ops` 提供 harness-neutral 的 git worktree 生命周期命令，对应官方 [team workflow](https://github.com/Fission-AI/OpenSpec/blob/main/docs/team-workflow.md) 左右两侧的 git 惯例，**中间的 `/opsx:*` 流程保持原样**。
