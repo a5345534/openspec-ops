@@ -1,13 +1,29 @@
 {
   "name": "openspec-ops",
   "version": "0.1.0",
-  "description": "Harness-neutral git worktree lifecycle CLI for OpenSpec changes",
+  "description": "OpenSpec ops automation: worktree CLI + Pi extension/skills (ensure, review follow-up, finish orphan reclaim)",
   "type": "module",
+  "keywords": [
+    "pi-package",
+    "openspec",
+    "worktree",
+    "git"
+  ],
   "bin": {
     "openspec-ops": "./bin/openspec-ops"
   },
+  "files": [
+    "bin",
+    "dist",
+    "src",
+    ".pi",
+    "README.md",
+    "package.json",
+    "tsconfig.json"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "openspec-ops": "tsx src/cli.ts",
@@ -16,10 +32,31 @@
   "engines": {
     "node": ">=20"
   },
+  "dependencies": {
+    "tsx": "^4.20.3"
+  },
   "devDependencies": {
     "@types/node": "^22.15.30",
-    "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "pi": {
+    "extensions": [
+      ".pi/extensions/**/*.ts"
+    ],
+    "skills": [
+      ".pi/skills/**/SKILL.md"
+    ],
+    "prompts": [
+      ".pi/prompts/**/*.md"
+    ]
   }
 }

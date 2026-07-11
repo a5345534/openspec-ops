@@ -48,6 +48,58 @@ npm link
 openspec-ops doctor --json
 ```
 
+### Pi package install (path B)
+
+Share this repo as a [Pi package](https://github.com/earendil-works/pi) so other machines/projects can load the extension, skills, and prompts via `pi install` / `pi update --extensions`.
+
+```bash
+# 1) Push this repo to GitHub (once)
+# gh repo create openspec-ops --source=. --public --push
+
+# 2) Install into user Pi settings (global)
+pi install git:github.com/<you>/openspec-ops@main
+
+# or pin a tag/commit (recommended for teams)
+pi install git:github.com/<you>/openspec-ops@v0.1.0
+
+# project-local install (writes .pi/settings.json)
+pi install -l git:github.com/<you>/openspec-ops@main
+```
+
+Update installed package resources:
+
+```bash
+pi update --extensions
+# or one package:
+pi update --extension git:github.com/<you>/openspec-ops
+```
+
+**Pinned refs:** `pi update --extensions` reconciles the clone to the **configured** ref; it does **not** automatically move `@v0.1.0` to a newer tag. To upgrade:
+
+```bash
+pi install git:github.com/<you>/openspec-ops@v0.2.0
+```
+
+**CLI on PATH:** git package install runs `npm install` (often omit dev). Runtime uses `tsx` from `dependencies` when `dist/` is missing. For a global CLI:
+
+```bash
+# from the package clone or this repo
+npm link
+# or set OPENSPEC_OPS_BIN to the package's bin/openspec-ops
+```
+
+`package.json` declares:
+
+```json
+"pi": {
+  "extensions": [".pi/extensions/**/*.ts"],
+  "skills": [".pi/skills/**/SKILL.md"],
+  "prompts": [".pi/prompts/**/*.md"]
+}
+```
+
+Project checkout still loads `.pi/` the usual way (no install required while developing inside this repo).
+
 ### Commands
 
 | Command | Purpose |

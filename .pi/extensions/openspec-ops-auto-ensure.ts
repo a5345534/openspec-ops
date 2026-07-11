@@ -47,9 +47,13 @@ import {
   isProposalReady,
   parseAutoReviewPolicy,
 } from "../../src/auto-review/index.js";
+import { resolvePackageRoot } from "../../src/package-root.js";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = resolve(EXT_DIR, "../..");
+/** Package root (works for project checkout and pi install git: clone). */
+const PACKAGE_ROOT = resolvePackageRoot(EXT_DIR);
+/** @deprecated alias — same as package root for bin resolution */
+const PROJECT_ROOT = PACKAGE_ROOT;
 
 type WorkspaceState = {
   change: string;

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export interface OpsJsonEnvelope {
   schemaVersion?: number;
@@ -51,6 +52,21 @@ export function resolveOpsBin(options: {
   if (options.projectRoot) {
     const local = resolve(options.projectRoot, "bin/openspec-ops");
     if (existsSync(local)) return local;
+  }
+
+  // Last resort: npm global bin next to this package when linked
+  try {
+    const here = resolve(fileURLToPath(import.meta.url), "..");
+    // src/auto-ensure or dist/auto-ensure → package root
+    const candidates = [
+      resolve(here, "../../bin/openspec-ops"),
+      resolve(here, "../bin/openspec-ops"),
+    ];
+    for (const c of candidates) {
+      if (existsSync(c)) return c;
+    }
+  } catch {
+    // ignore
   }
 
   return null;
