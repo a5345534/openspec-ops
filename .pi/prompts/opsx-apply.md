@@ -20,6 +20,15 @@ Implement tasks from an OpenSpec change.
 
    Always announce: "Using change: <name>" and how to override (e.g., `/opsx-apply <other>`).
 
+<!-- openspec-ops:worktree-alignment BEGIN -->
+1b. **Prefer openspec-ops worktree cwd** when implementing a named change
+
+   - `openspec-ops start` / auto-ensure do **NOT** switch process cwd by themselves.
+   - Run `openspec-ops where "<name>" --json` when the change name is known.
+   - On success: use `result.path` as cwd for implementation edits and OpenSpec CLI calls for that change.
+   - If alignment is required (`openspec-ops` resolvable and `OPENSPEC_OPS_AUTO_START` not `off`) and where fails: warn or stop before writing under primary `openspec/changes/<name>/` as if it were the workspace.
+<!-- openspec-ops:worktree-alignment END -->
+
 2. **Check status to understand the schema**
    ```bash
    openspec status --change "<name>" --json

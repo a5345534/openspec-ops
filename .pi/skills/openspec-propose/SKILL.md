@@ -35,13 +35,33 @@ When ready to implement, run /opsx-apply
 
    **IMPORTANT**: Do NOT proceed without understanding what the user wants to build.
 
-2. **Create the change directory**
+<!-- openspec-ops:worktree-alignment BEGIN -->
+2. **openspec-ops worktree alignment** (before any `openspec new change` or `openspec/changes` writes)
+
+   **ensure/start does NOT switch process cwd.** You must bind cwd to the worktree path explicitly.
+
+   Once kebab-case change name `<name>` is known:
+
+   1. Resolve workspace:
+      ```bash
+      openspec-ops where "<name>" --json || openspec-ops start "<name>" --json
+      ```
+   2. **Alignment required** when `openspec-ops` is resolvable AND `OPENSPEC_OPS_AUTO_START` is not `off`:
+      - On where/start hard failure: **STOP** and report the error. Do **not** treat primary-only scaffold as success.
+      - On success: use `result.path` as **cwd** for ALL subsequent `openspec` CLI invocations and for creating/editing files under `openspec/changes/<name>/`.
+   3. **Alignment not required** when `OPENSPEC_OPS_AUTO_START=off` OR `openspec-ops` cannot be resolved:
+      - You MAY continue using the current directory, but MUST warn that worktree alignment is skipped.
+
+   Tip: put `openspec-ops-intercept` on PATH (with `OPENSPEC_REAL_BIN`) so `openspec new change` ensures before scaffold.
+<!-- openspec-ops:worktree-alignment END -->
+
+3. **Create the change directory** (from the worktree cwd when alignment applied)
    ```bash
    openspec new change "<name>"
    ```
    This creates a scaffolded change in the planning home resolved by the CLI with `.openspec.yaml`.
 
-3. **Get the artifact build order**
+4. **Get the artifact build order**
    ```bash
    openspec status --change "<name>" --json
    ```
@@ -50,7 +70,7 @@ When ready to implement, run /opsx-apply
    - `artifacts`: list of all artifacts with their status and dependencies
    - `planningHome`, `changeRoot`, `artifactPaths`, and `actionContext`: path and scope context. Use these instead of assuming repo-local paths.
 
-4. **Create artifacts in sequence until apply-ready**
+5. **Create artifacts in sequence until apply-ready**
 
    Use the **TodoWrite tool** to track progress through the artifacts.
 
@@ -82,7 +102,7 @@ When ready to implement, run /opsx-apply
       - Use **AskUserQuestion tool** to clarify
       - Then continue with creation
 
-5. **Show final status**
+6. **Show final status**
    ```bash
    openspec status --change "<name>"
    ```

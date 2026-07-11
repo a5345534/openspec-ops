@@ -150,7 +150,14 @@ export interface DoctorWorktree {
 }
 
 export interface DoctorIssue {
-  id: "stale_worktree_dir" | "missing_worktree_path" | "worktree_without_change_dir";
+  id:
+    | "stale_worktree_dir"
+    | "missing_worktree_path"
+    | "worktree_without_change_dir"
+    | "ops_bin_missing"
+    | "openspec_not_intercept"
+    | "openspec_real_bin_unset"
+    | "propose_skill_alignment_markers_missing";
   severity: "error" | "warning" | "info";
   path: string;
   message: string;

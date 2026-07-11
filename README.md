@@ -100,6 +100,21 @@ npm link
 
 Project checkout still loads `.pi/` the usual way (no install required while developing inside this repo).
 
+### Write path alignment (issue #1)
+
+**ensure/start creates a worktree; it does not switch the agent process cwd.**
+
+Package propose/apply skills include an `openspec-ops:worktree-alignment` block:
+
+1. After the change name is known: `openspec-ops where` / `start`
+2. Use `result.path` as cwd for `openspec` and `openspec/changes/<name>/` writes
+3. **Fail-closed** when `openspec-ops` is resolvable and `OPENSPEC_OPS_AUTO_START` is not `off` and where/start fails
+4. **`OPENSPEC_OPS_AUTO_START=off`** (or ops missing): primary allowed **with warning**
+
+After `openspec update`, run `openspec-ops doctor --json` — it warns if the alignment marker block was wiped from the propose skill.
+
+See also GitHub issue [#1](https://github.com/a5345534/openspec-ops/issues/1).
+
 ### OpenSpec CLI intercept (`openspec-ops-intercept`)
 
 Agents usually run `openspec new change <name>` after `/opsx-propose` **without** a name on the slash line. This package ships an **opt-in** wrapper that intercepts that CLI call **before** the change directory is created:

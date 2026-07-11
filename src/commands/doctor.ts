@@ -1,6 +1,9 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { isDirty } from "../git.js";
+import { collectEnvDoctorIssues } from "../doctor/env-checks.js";
+import { resolvePackageRoot } from "../package-root.js";
 import {
   findChangeDir,
   hasOpenspecTree,
@@ -81,6 +84,20 @@ export function runDoctor(options: GlobalOptions): DoctorResult {
         });
       }
     }
+  }
+
+  // Env / intercept / propose skill markers (package root when this CLI is from openspec-ops)
+  let packageRoot = ctx.primaryPath;
+  try {
+    packageRoot = resolvePackageRoot(dirname(fileURLToPath(import.meta.url)));
+  } catch {
+    packageRoot = ctx.primaryPath;
+  }
+  for (const e of collectEnvDoctorIssues({
+    primaryPath: ctx.primaryPath,
+    packageRoot,
+  })) {
+    issues.push(e);
   }
 
   const summary = {

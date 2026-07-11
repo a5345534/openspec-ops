@@ -124,13 +124,17 @@ export default function (pi: ExtensionAPI) {
       reviewWatches.add(change);
     }
 
-    const ensurePolicy = parseAutoStartPolicy(process.env.OPENSPEC_OPS_AUTO_START);
-    if (ensurePolicy === "off") {
-      // Review may still be armed; propose continues without ensure
+    if (!change) {
+      ctx.ui.notify(
+        "No kebab change name on propose; worktree ensure/write alignment waits until a name is known (e.g. openspec new change).",
+        "info",
+      );
       return { action: "continue" };
     }
 
-    if (!change) {
+    const ensurePolicy = parseAutoStartPolicy(process.env.OPENSPEC_OPS_AUTO_START);
+    if (ensurePolicy === "off") {
+      // Review may still be armed; propose continues without ensure
       return { action: "continue" };
     }
 
@@ -192,7 +196,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async () => {
-    // Workspace path hint only — no same-turn review inject
+    // Workspace path handoff — REQUIRED write root (ensure does not chdir)
     if (!active) return;
 
     return {
@@ -200,7 +204,8 @@ export default function (pi: ExtensionAPI) {
         customType: "openspec-ops-workspace",
         content: [
           `Active openspec-ops workspace: change=${active.change} path=${active.path} branch=${active.branch}.`,
-          `OpenSpec propose/apply/archive semantics are unchanged; workspace was ensured by harness only.`,
+          `REQUIRED: All OpenSpec change artifact writes and preferred implementation writes for change "${active.change}" MUST use workspace path ${active.path} (e.g. tool cwd or cd). Do NOT write openspec/changes/${active.change}/ only under the primary checkout.`,
+          `Note: ensure/start does NOT switch the process cwd by itself. OpenSpec propose/apply/archive semantics are unchanged; workspace was ensured by harness only.`,
         ].join("\n\n"),
         display: true,
       },
