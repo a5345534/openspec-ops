@@ -322,6 +322,8 @@ Reload Pi after pulling (`/reload`) so the extension is picked up from `.pi/exte
 
 ## Status
 
+- Worktree write alignment (issue #1): archived `align-propose-writes-with-worktree`
+
 - OpenSpec CLI intercept (`openspec-ops-intercept`): archived `intercept-openspec-new-change`
 
 - Phase 0 CLI: archived `add-workspace-lifecycle-cli`
