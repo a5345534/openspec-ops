@@ -17,7 +17,18 @@
     "bin",
     "dist",
     "src",
-    ".pi",
+    ".pi/extensions",
+    ".pi/skills/ops-doctor",
+    ".pi/skills/ops-finish",
+    ".pi/skills/ops-review",
+    ".pi/skills/ops-start",
+    ".pi/skills/ops-where",
+    ".pi/prompts/ops-doctor.md",
+    ".pi/prompts/ops-finish.md",
+    ".pi/prompts/ops-review.md",
+    ".pi/prompts/ops-start.md",
+    ".pi/prompts/ops-where.md",
+    "docs/snippets",
     "README.md",
     "package.json",
     "tsconfig.json"
@@ -54,10 +65,10 @@
       ".pi/extensions/**/*.ts"
     ],
     "skills": [
-      ".pi/skills/**/SKILL.md"
+      ".pi/skills/ops-*/SKILL.md"
     ],
     "prompts": [
-      ".pi/prompts/**/*.md"
+      ".pi/prompts/ops-*.md"
     ]
   }
 }

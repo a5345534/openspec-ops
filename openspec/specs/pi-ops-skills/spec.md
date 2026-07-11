@@ -7,7 +7,7 @@ Pi agent skills and slash prompts that orchestrate the openspec-ops workspace CL
 ## Requirements
 
 ### Requirement: Four paired Pi skills and slash prompts exist
-The project SHALL provide Pi skills and matching slash prompts for workspace lifecycle orchestration:
+The project SHALL provide Pi skills and matching slash prompts for workspace lifecycle orchestration under the **ops-** prefix only for package export:
 
 | Skill directory | Prompt file | CLI command |
 |---|---|---|
@@ -16,19 +16,17 @@ The project SHALL provide Pi skills and matching slash prompts for workspace lif
 | `.pi/skills/ops-finish/` | `.pi/prompts/ops-finish.md` | `openspec-ops finish` |
 | `.pi/skills/ops-doctor/` | `.pi/prompts/ops-doctor.md` | `openspec-ops doctor` |
 
-Each skill SHALL be a directory containing `SKILL.md` with frontmatter `name` matching the skill id (`ops-start`, `ops-where`, `ops-finish`, `ops-doctor`).
+Additional package-exported skills (e.g. `ops-review`) MUST also use the `ops-` prefix.
 
-Skill `description` fields MUST mention openspec-ops / worktree workspace intent and MUST NOT claim to replace OpenSpec propose/apply/archive.
+The Pi package export surface MUST NOT include skills named `openspec-*` or prompts named `opsx-*`.
 
-#### Scenario: Skill layout present
+#### Scenario: Skill layout present for ops lifecycle
 - **WHEN** the change is implemented
-- **THEN** the four skill directories and four prompt files listed above exist in the repository
+- **THEN** the four lifecycle skill directories and prompt files listed above exist for product use
 
-#### Scenario: Naming does not use opsx prefix
-- **WHEN** listing the new skill names and prompt filenames
-- **THEN** they use the `ops-` prefix and not `opsx-`
-
----
+#### Scenario: Package export excludes openspec and opsx names
+- **WHEN** inspecting package.json `pi.skills` and `pi.prompts`
+- **THEN** exported paths do not load `openspec-*` skills or `opsx-*` prompts
 
 ### Requirement: Full-text self-contained documents
 Each skill `SKILL.md` and each prompt `ops-*.md` MUST be operationally self-contained.

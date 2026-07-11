@@ -40,33 +40,19 @@ Worktree alignment is **not required** when `OPENSPEC_OPS_AUTO_START=off` or `op
 ---
 
 ### Requirement: Package propose orchestration resolves workspace before writes
-Package-shipped propose skills/prompts SHALL, once a kebab-case change name is known:
+Worktree alignment for propose MUST NOT require the openspec-ops Pi package to export a skill named `openspec-propose` or a prompt named `opsx-propose`.
 
-1. Resolve workspace via `openspec-ops where` and/or `start` with `--json`
-2. Use `result.path` as cwd for OpenSpec CLI and for files under `openspec/changes/<name>/`
-3. If alignment is required and where/start hard-fails: **stop** with an explicit error (fail-closed)
-4. If alignment is not required and workspace is missing: may continue on primary **with warning**
+Valid mechanisms: extension constraints, opt-in intercept, doctor diagnostics, and a **documentation snippet** for consumers to merge into **their own** propose skill after `openspec update`.
 
-Ops-specific steps MUST be wrapped in durable markers:
+This version does not require shipping an `ops-propose` package skill; if a future orchestrator is added, it MUST use an **ops-*** name and MUST NOT be named `openspec-propose`.
 
-`<!-- openspec-ops:worktree-alignment BEGIN -->` … `<!-- openspec-ops:worktree-alignment END -->`
+#### Scenario: package does not require openspec-propose export for alignment
+- **WHEN** implementing worktree write alignment for package consumers
+- **THEN** success criteria do not depend on `pi.skills` including `openspec-propose`
 
-#### Scenario: where success binds cwd
-- **WHEN** propose orchestration knows change `add-dark-mode`
-- **AND** `openspec-ops where add-dark-mode --json` returns ok with path `W`
-- **THEN** instructions require using `W` as cwd for scaffold/write steps
-
-#### Scenario: missing worktree fails closed when alignment required
-- **WHEN** alignment is required
-- **AND** where/start fails
-- **THEN** the agent is instructed to stop and report the failure
-- **AND** not treat primary-only scaffold as success
-
-#### Scenario: skill contains alignment marker block
-- **WHEN** reading the package propose skill after this change
-- **THEN** it contains the `openspec-ops:worktree-alignment` BEGIN/END markers around ops binding steps
-
----
+#### Scenario: snippet is an allowed alignment mechanism
+- **WHEN** documenting consumer alignment without package openspec-propose
+- **THEN** a paste-in snippet path (e.g. under `docs/snippets/`) is an accepted mechanism
 
 ### Requirement: Extension hard write-path constraint after ensure
 After successful auto-ensure for change `C` at path `W`, the Pi extension SHALL inject a message that **requires** subsequent openspec and implementation writes for that change to use `W`, not a soft optional hint alone.

@@ -24,7 +24,10 @@ function which(cmd: string): string | null {
 }
 
 /**
- * Env/PATH checks for doctor (ops bin, intercept, skill markers).
+ * Env/PATH checks for doctor (ops bin, intercept, consumer propose markers).
+ *
+ * Does NOT require package-local openspec-propose (package no longer ships it).
+ * Marker check only when consumer project has that skill file.
  */
 export function collectEnvDoctorIssues(options: {
   primaryPath: string;
@@ -35,6 +38,7 @@ export function collectEnvDoctorIssues(options: {
   const env = options.env ?? process.env;
   const issues: EnvCheckIssue[] = [];
   const packageRoot = options.packageRoot ?? options.primaryPath;
+  const projectRoot = options.primaryPath;
 
   const opsBin = resolveOpsBin({
     envBin: env.OPENSPEC_OPS_BIN,
@@ -78,17 +82,18 @@ export function collectEnvDoctorIssues(options: {
     }
   }
 
-  const proposeSkill = join(packageRoot, ".pi/skills/openspec-propose/SKILL.md");
-  if (existsSync(proposeSkill)) {
-    const body = readFileSync(proposeSkill, "utf8");
+  // Consumer project propose skill only (not package tree as OpenSpec distribution)
+  const consumerPropose = join(projectRoot, ".pi/skills/openspec-propose/SKILL.md");
+  if (existsSync(consumerPropose)) {
+    const body = readFileSync(consumerPropose, "utf8");
     if (!body.includes("openspec-ops:worktree-alignment BEGIN")) {
       issues.push({
         id: "propose_skill_alignment_markers_missing",
-        severity: "warning",
-        path: proposeSkill,
+        severity: "info",
+        path: consumerPropose,
         message:
-          "Propose skill missing openspec-ops:worktree-alignment marker block (regen may have wiped it)",
-        hint: "Re-apply worktree alignment steps or restore markers after openspec update",
+          "Consumer propose skill lacks openspec-ops:worktree-alignment markers (optional paste from docs/snippets)",
+        hint: "See docs/snippets/worktree-alignment-block.md after openspec update",
       });
     }
   }

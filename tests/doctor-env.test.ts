@@ -5,16 +5,31 @@ import { describe, expect, it } from "vitest";
 import { collectEnvDoctorIssues } from "../src/doctor/env-checks.js";
 
 describe("collectEnvDoctorIssues", () => {
-  it("warns when propose skill markers missing", () => {
+  it("does not require package-local openspec-propose markers", () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "ops-pkg-"));
+    const projectRoot = mkdtempSync(join(tmpdir(), "ops-proj-"));
+    // package has no openspec-propose
+    const issues = collectEnvDoctorIssues({
+      primaryPath: projectRoot,
+      packageRoot,
+      whichOpenspec: null,
+      env: { PATH: "" },
+    });
+    expect(issues.some((i) => i.id === "propose_skill_alignment_markers_missing")).toBe(
+      false,
+    );
+  });
+
+  it("info when consumer propose skill lacks markers", () => {
     const root = mkdtempSync(join(tmpdir(), "ops-doc-"));
     const skillDir = join(root, ".pi/skills/openspec-propose");
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, "SKILL.md"), "# propose\nno markers\n");
     const issues = collectEnvDoctorIssues({
       primaryPath: root,
-      packageRoot: root,
+      packageRoot: mkdtempSync(join(tmpdir(), "ops-pkg2-")),
       whichOpenspec: null,
-      env: { OPENSPEC_OPS_BIN: "" },
+      env: { PATH: "" },
     });
     expect(issues.some((i) => i.id === "propose_skill_alignment_markers_missing")).toBe(
       true,
@@ -32,7 +47,7 @@ describe("collectEnvDoctorIssues", () => {
     expect(issues.some((i) => i.id === "openspec_not_intercept")).toBe(true);
   });
 
-  it("no marker warning when block present", () => {
+  it("no marker issue when consumer has alignment block", () => {
     const root = mkdtempSync(join(tmpdir(), "ops-doc3-"));
     const skillDir = join(root, ".pi/skills/openspec-propose");
     mkdirSync(skillDir, { recursive: true });
@@ -42,7 +57,7 @@ describe("collectEnvDoctorIssues", () => {
     );
     const issues = collectEnvDoctorIssues({
       primaryPath: root,
-      packageRoot: root,
+      packageRoot: mkdtempSync(join(tmpdir(), "ops-pkg3-")),
       whichOpenspec: null,
       env: { PATH: "" },
     });

@@ -88,30 +88,40 @@ npm link
 # or set OPENSPEC_OPS_BIN to the package's bin/openspec-ops
 ```
 
-`package.json` declares:
+`package.json` declares a **pure sidecar** surface (ops-* only — does **not** replace consumer OpenSpec skills):
 
 ```json
 "pi": {
   "extensions": [".pi/extensions/**/*.ts"],
-  "skills": [".pi/skills/**/SKILL.md"],
-  "prompts": [".pi/prompts/**/*.md"]
+  "skills": [".pi/skills/ops-*/SKILL.md"],
+  "prompts": [".pi/prompts/ops-*.md"]
 }
 ```
 
-Project checkout still loads `.pi/` the usual way (no install required while developing inside this repo).
+- **Ships:** `ops-start` / `ops-where` / `ops-finish` / `ops-doctor` / `ops-review` + extension + CLI
+- **Does not ship (as package skills/prompts):** `openspec-*`, `opsx-*` — your project keeps its own from `openspec init` / `openspec update`
+- Vendored upstream copies (if any) live under `vendor/openspec-pi-ref/` for reference only and are **not** in `pi.*`
+
+Project checkout of this monorepo still has local files for development; **Pi package install** only loads the allowlisted paths above.
 
 ### Write path alignment (issue #1)
 
 **ensure/start creates a worktree; it does not switch the agent process cwd.**
 
-Package propose/apply skills include an `openspec-ops:worktree-alignment` block:
+openspec-ops does **not** override your `openspec-propose` skill. Alignment uses:
 
-1. After the change name is known: `openspec-ops where` / `start`
-2. Use `result.path` as cwd for `openspec` and `openspec/changes/<name>/` writes
-3. **Fail-closed** when `openspec-ops` is resolvable and `OPENSPEC_OPS_AUTO_START` is not `off` and where/start fails
-4. **`OPENSPEC_OPS_AUTO_START=off`** (or ops missing): primary allowed **with warning**
+1. **Pi extension** — after ensure, REQUIRED write path = worktree
+2. **Opt-in intercept** — `openspec-ops-intercept` on `openspec new change`
+3. **Optional snippet** — paste into *your* propose skill: [`docs/snippets/worktree-alignment-block.md`](docs/snippets/worktree-alignment-block.md)
 
-After `openspec update`, run `openspec-ops doctor --json` — it warns if the alignment marker block was wiped from the propose skill.
+Rules when using the snippet / orchestration:
+
+- After the change name is known: `openspec-ops where` / `start`
+- Use `result.path` as cwd for `openspec` and `openspec/changes/<name>/` writes
+- **Fail-closed** when `openspec-ops` is resolvable and `OPENSPEC_OPS_AUTO_START` is not `off` and where/start fails
+- **`OPENSPEC_OPS_AUTO_START=off`** (or ops missing): primary allowed **with warning**
+
+`openspec-ops doctor --json` can hint if your **project** propose skill lacks the optional marker block (not the package tree).
 
 See also GitHub issue [#1](https://github.com/a5345534/openspec-ops/issues/1).
 
@@ -321,6 +331,8 @@ Reload Pi after pulling (`/reload`) so the extension is picked up from `.pi/exte
 5. **独立演进**：本仓库自洽说明自身目标与边界
 
 ## Status
+
+- Pi package ops-only surface: archived `package-ops-only-surface`
 
 - Worktree write alignment (issue #1): archived `align-propose-writes-with-worktree`
 
