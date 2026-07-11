@@ -143,6 +143,8 @@ after a failed start without asking.
 
    > No `openspec/changes/<change>` directory yet — normal before propose.
 
+8. **Submodules:** If the worktree has git submodules (see `where` → `result.submodules`, or `.gitmodules`), do **not** leave long-lived implementation on **detached HEAD** inside a submodule. Create/switch a named branch in the submodule before substantial edits; commit in the submodule first, then update the parent gitlink. Path alignment / start does **not** create submodule feature branches.
+
 ## Guardrails
 
 - Idempotent reuse is success.

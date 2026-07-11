@@ -119,6 +119,15 @@ export interface StartResult {
   warnings: Array<{ code: string; message: string }>;
 }
 
+/** Top-level submodule state under a change worktree (read-only probe). */
+export interface SubmoduleStatus {
+  path: string;
+  detached: boolean;
+  dirty: boolean;
+  branch: string | null;
+  head: string | null;
+}
+
 export interface WhereResult {
   found: true;
   change: string;
@@ -130,6 +139,8 @@ export interface WhereResult {
   changeDirExists: boolean;
   changeDirPath: string | null;
   matchedBy: "path" | "branch";
+  /** Always present on success; empty when no top-level submodules. */
+  submodules: SubmoduleStatus[];
 }
 
 export interface FinishResult {
@@ -159,7 +170,9 @@ export interface DoctorIssue {
     | "openspec_real_bin_unset"
     | "propose_skill_alignment_markers_missing"
     | "leftover_dirty_worktree"
-    | "artifacts_on_primary_only";
+    | "artifacts_on_primary_only"
+    | "submodule_detached"
+    | "submodule_detached_dirty";
   severity: "error" | "warning" | "info";
   path: string;
   message: string;

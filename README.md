@@ -37,6 +37,23 @@ openspec-ops finish    remove worktree when clean (never auto --force if dirty;
 - **Package is pure sidecar** — ships `ops-*` skills only; does not replace project `openspec-*` / `opsx-*`.
 - **Archive-before-merge** is not the default (risk of specs/code split).
 
+## Submodules (monorepos)
+
+Parent change worktree branch **≠** nested submodule branch.
+
+After `openspec-ops start`, git often leaves submodules on **detached HEAD** at the parent’s recorded SHA. Path alignment (write under the worktree) does **not** create a feature branch inside the submodule.
+
+Recommended order when you implement inside a submodule:
+
+1. `cd <worktree>/<submodule>` → `git switch -c <change>` (or an existing branch)
+2. Commit in the submodule
+3. In the parent worktree: `git add <submodule>` and commit the gitlink
+4. Then PR/merge as usual; archive and `finish` after
+
+`openspec-ops where --json` includes `result.submodules[]` (`path`, `detached`, `dirty`, `branch`, `head`).  
+`openspec-ops doctor` reports `submodule_detached` (info) and `submodule_detached_dirty` (warning).  
+Dirty `finish` messages mention submodule risk; openspec-ops never auto-commits submodules.
+
 ## Phase 0: workspace lifecycle CLI
 
 `openspec-ops` 提供 harness-neutral 的 git worktree 生命周期命令，对应官方 [team workflow](https://github.com/Fission-AI/OpenSpec/blob/main/docs/team-workflow.md) 左右两侧的 git 惯例，**中间的 `/opsx:*` 流程保持原样**。

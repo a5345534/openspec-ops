@@ -6,6 +6,7 @@ import {
   findChangeDir,
   resolveRepoContext,
 } from "../resolve.js";
+import { probeTopLevelSubmodules } from "../submodules/probe.js";
 import { printSuccess } from "../output.js";
 import { CliError, type ChangeOptions, type WhereResult } from "../types.js";
 
@@ -29,6 +30,7 @@ export function locateWorkspace(options: ChangeOptions): WhereResult {
       changeDirExists: changeDir.exists,
       changeDirPath: changeDir.path,
       matchedBy: "path",
+      submodules: probeTopLevelSubmodules(byPath.path),
     };
   }
 
@@ -53,6 +55,7 @@ export function locateWorkspace(options: ChangeOptions): WhereResult {
       changeDirExists: changeDir.exists,
       changeDirPath: changeDir.path,
       matchedBy: "branch",
+      submodules: probeTopLevelSubmodules(hit.path),
     };
   }
 
@@ -65,6 +68,13 @@ export function locateWorkspace(options: ChangeOptions): WhereResult {
 
 export function runWhere(options: ChangeOptions): WhereResult {
   const result = locateWorkspace(options);
+  const subs = result.submodules;
+  const detached = subs.filter((s) => s.detached).length;
+  const dirtySubs = subs.filter((s) => s.dirty).length;
+  const subSummary =
+    subs.length === 0
+      ? "submodules: 0"
+      : `submodules: ${subs.length} (${detached} detached, ${dirtySubs} dirty)`;
   printSuccess("where", result, {
     json: options.json,
     humanLines: [
@@ -72,6 +82,7 @@ export function runWhere(options: ChangeOptions): WhereResult {
       `branch:  ${result.branch}`,
       `status:  ${result.dirty ? "dirty" : "clean"}`,
       `match:   ${result.matchedBy}`,
+      subSummary,
     ],
   });
   return result;

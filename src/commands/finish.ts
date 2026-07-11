@@ -11,7 +11,9 @@ export function runFinish(options: FinishOptions): FinishResult {
   if (loc.dirty && !options.force) {
     throw new CliError(
       "worktree_dirty",
-      `Worktree is dirty: ${loc.path}. Commit/stash changes or pass --force.`,
+      `Worktree is dirty: ${loc.path}. Dirtiness may include uncommitted submodule changes. ` +
+        `Commit/stash (submodule first, then parent gitlink) or pass --force ` +
+        `(discards uncommitted work, including inside submodules).`,
       { path: loc.path, change: loc.change },
     );
   }

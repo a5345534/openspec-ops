@@ -10,6 +10,10 @@ import {
   inferChangeFromLeaf,
   resolveRepoContext,
 } from "../resolve.js";
+import {
+  doctorIssuesFromSubmodules,
+  probeTopLevelSubmodules,
+} from "../submodules/probe.js";
 import { printSuccess } from "../output.js";
 import type { DoctorIssue, DoctorResult, DoctorWorktree, GlobalOptions } from "../types.js";
 
@@ -109,6 +113,19 @@ export function runDoctor(options: GlobalOptions): DoctorResult {
           });
         }
       }
+    }
+  }
+
+  // Submodule hygiene (top-level, read-only; fail-open)
+  for (const wt of worktrees) {
+    if (!existsSync(wt.path)) continue;
+    try {
+      const subs = probeTopLevelSubmodules(wt.path);
+      for (const issue of doctorIssuesFromSubmodules(wt.path, subs)) {
+        issues.push(issue);
+      }
+    } catch {
+      // fail-open
     }
   }
 

@@ -29,6 +29,8 @@ Once kebab-case change name `<name>` is known:
    - You MAY continue using the current directory, but MUST warn that worktree alignment is skipped.
 
 Tip: `alias openspec=openspec-ops-intercept` with `OPENSPEC_REAL_BIN` set so `openspec new change` ensures before scaffold.
+
+**Submodules:** Path alignment does **not** create feature branches inside git submodules. If `.gitmodules` exists, check `result.submodules` from `where` — do not leave long-lived work on detached submodule HEAD (branch + commit in submodule, then parent gitlink).
 <!-- openspec-ops:worktree-alignment END -->
 ```
 
@@ -43,8 +45,9 @@ Once change name `<name>` is known:
 1. `openspec-ops where "<name>" --json` (or `start` if missing)
 2. On success: use `result.path` as **cwd** for implementation edits and OpenSpec CLI for that change.
 3. If alignment required and where/start fails: STOP rather than implementing only on primary by accident.
+4. If `result.submodules` shows `detached: true`, create/switch a branch in that submodule before substantial edits; commit submodule first, then parent gitlink.
 
-**ensure/start does NOT switch process cwd.**
+**ensure/start does NOT switch process cwd.** Path alignment ≠ submodule branch.
 
 Default delivery order: **merge → archive → finish** (ship/PR is separate; openspec-ops does not auto-merge).
 <!-- openspec-ops:worktree-alignment END -->
