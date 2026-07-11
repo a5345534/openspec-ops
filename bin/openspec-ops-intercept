@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+import { pathToFileURL } from "node:url";
+import { dirname, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+
+const here = dirname(new URL(import.meta.url).pathname);
+const distEntry = resolve(here, "../dist/intercept/cli.js");
+const srcEntry = resolve(here, "../src/intercept/cli.ts");
+
+async function main() {
+  if (existsSync(distEntry)) {
+    await import(pathToFileURL(distEntry).href);
+    return;
+  }
+
+  const require = createRequire(import.meta.url);
+  try {
+    require.resolve("tsx/cjs");
+  } catch {
+    console.error(
+      "openspec-ops-intercept: dist/ not built and tsx is unavailable. Run `npm install` and `npm run build`.",
+    );
+    process.exit(10);
+  }
+
+  const { register } = await import("tsx/esm/api");
+  register();
+  await import(pathToFileURL(srcEntry).href);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(10);
+});

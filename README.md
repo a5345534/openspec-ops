@@ -100,6 +100,36 @@ npm link
 
 Project checkout still loads `.pi/` the usual way (no install required while developing inside this repo).
 
+### OpenSpec CLI intercept (`openspec-ops-intercept`)
+
+Agents usually run `openspec new change <name>` after `/opsx-propose` **without** a name on the slash line. This package ships an **opt-in** wrapper that intercepts that CLI call **before** the change directory is created:
+
+1. `openspec-ops start <name>` (ensure worktree)
+2. Run the **real** OpenSpec binary with cwd set to the worktree (when known)
+3. Print a stderr hint with the worktree path (later agent commands are **not** forced into that cwd)
+
+```bash
+# resolve real openspec once
+export OPENSPEC_REAL_BIN="$(command -v openspec)"
+
+# put intercept first, or alias
+alias openspec=openspec-ops-intercept
+# or: export PATH="/path/to/openspec-ops/bin:$PATH"  # only if intercept is named carefully
+
+# disable ensure side effects
+export OPENSPEC_OPS_INTERCEPT_NEW_CHANGE=off
+```
+
+| Env | Default | Meaning |
+|---|---|---|
+| `OPENSPEC_OPS_INTERCEPT_NEW_CHANGE` | `on` | `on` = ensure then forward; `off` = pure forward |
+| `OPENSPEC_REAL_BIN` | (PATH) | Absolute path to real `@fission-ai/openspec` binary |
+| `OPENSPEC_OPS_BIN` | (PATH) | openspec-ops CLI for start |
+
+Package.json registers **`openspec-ops-intercept`** only (does **not** replace global `openspec`).
+
+Auto-review follow-up no longer requires a slash change name: when the Pi extension is loaded, settle-time discovery schedules `/ops-review <change>` when `proposal.md` appears.
+
 ### Commands
 
 | Command | Purpose |
@@ -276,6 +306,8 @@ Reload Pi after pulling (`/reload`) so the extension is picked up from `.pi/exte
 5. **独立演进**：本仓库自洽说明自身目标与边界
 
 ## Status
+
+- OpenSpec CLI intercept (`openspec-ops-intercept`): archived `intercept-openspec-new-change`
 
 - Phase 0 CLI: archived `add-workspace-lifecycle-cli`
 - Pi ops skills/prompts: archived `add-pi-ops-skills`

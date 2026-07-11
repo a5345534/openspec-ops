@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildOpsReviewFollowUpMessage,
+  discoverReadyProposalChanges,
   isProposalReady,
   parseAutoReviewPolicy,
+  selectReviewFollowUps,
   OPS_REVIEW_SLASH,
 } from "../src/auto-review/index.js";
 
@@ -57,5 +59,24 @@ describe("buildOpsReviewFollowUpMessage", () => {
     expect(buildOpsReviewFollowUpMessage("add-dark-mode")).toBe(
       "/ops-review add-dark-mode",
     );
+  });
+});
+
+describe("discoverReadyProposalChanges", () => {
+  it("finds change dirs with proposal.md", () => {
+    const root = mkdtempSync(join(tmpdir(), "ops-disc-"));
+    const dir = join(root, "openspec", "changes", "add-x");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "proposal.md"), "## Why\n");
+    mkdirSync(join(root, "openspec", "changes", "archive"), { recursive: true });
+    expect(discoverReadyProposalChanges([root])).toEqual(["add-x"]);
+  });
+});
+
+describe("selectReviewFollowUps", () => {
+  it("skips already scheduled", () => {
+    expect(
+      selectReviewFollowUps(["a", "b"], new Set(["a"])),
+    ).toEqual(["b"]);
   });
 });

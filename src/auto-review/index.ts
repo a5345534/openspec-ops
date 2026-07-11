@@ -4,3 +4,7 @@ export {
   buildOpsReviewFollowUpMessage,
   OPS_REVIEW_SLASH,
 } from "./ready.js";
+export {
+  discoverReadyProposalChanges,
+  selectReviewFollowUps,
+} from "./discover.js";

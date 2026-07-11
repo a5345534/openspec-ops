@@ -10,7 +10,8 @@
     "git"
   ],
   "bin": {
-    "openspec-ops": "./bin/openspec-ops"
+    "openspec-ops": "./bin/openspec-ops",
+    "openspec-ops-intercept": "./bin/openspec-ops-intercept"
   },
   "files": [
     "bin",

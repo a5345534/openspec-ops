@@ -44,8 +44,10 @@ import {
 } from "../../src/auto-finish/index.js";
 import {
   buildOpsReviewFollowUpMessage,
+  discoverReadyProposalChanges,
   isProposalReady,
   parseAutoReviewPolicy,
+  selectReviewFollowUps,
 } from "../../src/auto-review/index.js";
 import { resolvePackageRoot } from "../../src/package-root.js";
 
@@ -63,8 +65,10 @@ type WorkspaceState = {
 
 export default function (pi: ExtensionAPI) {
   let active: WorkspaceState | null = null;
-  /** Sticky watches for ops-review follow-up turns (change names). */
+  /** Sticky watches for ops-review follow-up turns (slash-armed names). */
   const reviewWatches = new Set<string>();
+  /** One-shot: review follow-ups already scheduled this session. */
+  const reviewScheduled = new Set<string>();
   /** Sticky watches for orphan finish reclaim (change names). */
   const finishWatches = new Set<string>();
   /** Re-entrancy guard while settle evaluation runs async work. */
@@ -206,27 +210,31 @@ export default function (pi: ExtensionAPI) {
   // ── Settle: review follow-up + orphan finish ───────────────────────
   pi.on("agent_settled", async (_event, ctx) => {
     if (settleRunning) return;
-    if (reviewWatches.size === 0 && finishWatches.size === 0) return;
 
     settleRunning = true;
     try {
-      // Review follow-up turns
+      // Review follow-up: slash watches + settle-time discovery (no slash name required)
       const reviewPolicy = parseAutoReviewPolicy(process.env.OPENSPEC_OPS_AUTO_REVIEW);
       if (reviewPolicy === "off") {
         reviewWatches.clear();
-      } else if (reviewWatches.size > 0) {
+      } else {
         const roots = [PROJECT_ROOT, ctx.cwd, active?.path].filter(
           (r): r is string => Boolean(r),
         );
-        // unique roots
         const uniqueRoots = [...new Set(roots.map((r) => resolve(r)))];
 
-        for (const change of [...reviewWatches]) {
-          if (!isProposalReady(change, uniqueRoots)) {
-            continue; // keep watch
-          }
-          // One-shot: clear before send to prevent double fire
+        const candidates = new Set<string>([
+          ...reviewWatches,
+          ...discoverReadyProposalChanges(uniqueRoots),
+        ]);
+        const ready = [...candidates].filter(
+          (c) => isProposalReady(c, uniqueRoots),
+        );
+        const toFire = selectReviewFollowUps(ready, reviewScheduled);
+
+        for (const change of toFire) {
           reviewWatches.delete(change);
+          reviewScheduled.add(change);
           const msg = buildOpsReviewFollowUpMessage(change);
           try {
             if (typeof pi.sendUserMessage !== "function") {
