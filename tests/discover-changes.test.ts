@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatChangePickList,
   listCandidateChanges,
+  worktreeLeafChangeName,
 } from "../src/next-step/discover-changes.js";
 
 describe("listCandidateChanges", () => {
@@ -29,6 +30,36 @@ describe("listCandidateChanges", () => {
     mkdirSync(join(root, ".worktrees", "alpha"), { recursive: true });
     mkdirSync(join(root, "openspec", "changes", "alpha"), { recursive: true });
     expect(listCandidateChanges([root])).toEqual(["alpha", "zeta"]);
+  });
+
+  it("does not treat package root basename openspec-ops as a change", () => {
+    const parent = mkdtempSync(join(tmpdir(), "ops-pkg-"));
+    const root = join(parent, "openspec-ops");
+    mkdirSync(root, { recursive: true });
+    // no openspec/changes, no .worktrees
+    expect(listCandidateChanges([root])).toEqual([]);
+  });
+
+  it("package root named openspec-ops with only archive stays empty of false package name", () => {
+    const parent = mkdtempSync(join(tmpdir(), "ops-pkg2-"));
+    const root = join(parent, "openspec-ops");
+    mkdirSync(join(root, "openspec", "changes", "archive", "2026-01-01-old"), {
+      recursive: true,
+    });
+    expect(listCandidateChanges([root])).toEqual([]);
+  });
+
+  it("includes leaf when root is a .worktrees/<change> path", () => {
+    const parent = mkdtempSync(join(tmpdir(), "ops-wt-"));
+    const leaf = join(parent, ".worktrees", "add-x");
+    mkdirSync(leaf, { recursive: true });
+    expect(listCandidateChanges([leaf])).toEqual(["add-x"]);
+  });
+});
+
+describe("worktreeLeafChangeName", () => {
+  it("null when not under .worktrees", () => {
+    expect(worktreeLeafChangeName("/repo/openspec-ops")).toBeNull();
   });
 });
 

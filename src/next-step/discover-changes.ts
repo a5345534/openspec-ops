@@ -1,12 +1,38 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { CHANGE_NAME_RE } from "../ops-runtime/change-name.js";
 import { inferChangeFromLeaf } from "../resolve.js";
+
+function isDir(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** If dir is `.../.worktrees/<leaf>`, return kebab change name; else null. */
+export function worktreeLeafChangeName(dir: string): string | null {
+  if (!dir) return null;
+  const parent = basename(dirname(dir));
+  if (parent !== ".worktrees") return null;
+  const leaf = basename(dir);
+  if (CHANGE_NAME_RE.test(leaf)) return leaf;
+  const inferred = inferChangeFromLeaf(leaf);
+  if (inferred && CHANGE_NAME_RE.test(inferred)) return inferred;
+  return null;
+}
+
+function addKebabName(found: Set<string>, name: string | null | undefined): void {
+  if (name && CHANGE_NAME_RE.test(name)) found.add(name);
+}
 
 /**
  * List candidate kebab change names for nameless `/ops-next`.
  * - Active openspec/changes/<kebab>/ under roots (skip archive/)
- * - Leaf names under <root>/.worktrees/<leaf> when kebab / inferable
+ * - Dirs under <root>/.worktrees/<kebab>/
+ * - If root itself is .../.worktrees/<kebab>, include that leaf
+ * - Does NOT treat package/repo root basename as a change
  */
 export function listCandidateChanges(roots: string[]): string[] {
   const found = new Set<string>();
@@ -15,17 +41,13 @@ export function listCandidateChanges(roots: string[]): string[] {
     if (!root || !existsSync(root)) continue;
 
     const changesDir = join(root, "openspec", "changes");
-    if (existsSync(changesDir)) {
+    if (existsSync(changesDir) && isDir(changesDir)) {
       try {
         for (const ent of readdirSync(changesDir)) {
           if (ent === "archive") continue;
           if (!CHANGE_NAME_RE.test(ent)) continue;
           const full = join(changesDir, ent);
-          try {
-            if (statSync(full).isDirectory()) found.add(ent);
-          } catch {
-            // skip
-          }
+          if (isDir(full)) found.add(ent);
         }
       } catch {
         // skip
@@ -33,37 +55,24 @@ export function listCandidateChanges(roots: string[]): string[] {
     }
 
     const wtRoot = join(root, ".worktrees");
-    if (existsSync(wtRoot)) {
+    if (existsSync(wtRoot) && isDir(wtRoot)) {
       try {
         for (const leaf of readdirSync(wtRoot)) {
           const full = join(wtRoot, leaf);
-          try {
-            if (!statSync(full).isDirectory()) continue;
-          } catch {
-            continue;
-          }
+          if (!isDir(full)) continue;
           if (CHANGE_NAME_RE.test(leaf)) {
             found.add(leaf);
             continue;
           }
-          const inferred = inferChangeFromLeaf(leaf);
-          if (inferred && CHANGE_NAME_RE.test(inferred)) {
-            found.add(inferred);
-          }
+          addKebabName(found, inferChangeFromLeaf(leaf));
         }
       } catch {
         // skip
       }
     }
 
-    // cwd itself might be a worktree leaf
-    const leaf = basename(root);
-    if (CHANGE_NAME_RE.test(leaf)) {
-      found.add(leaf);
-    } else {
-      const inferred = inferChangeFromLeaf(leaf);
-      if (inferred && CHANGE_NAME_RE.test(inferred)) found.add(inferred);
-    }
+    // Only if this root is itself a change worktree path
+    addKebabName(found, worktreeLeafChangeName(root));
   }
 
   return [...found].sort((a, b) => a.localeCompare(b));
