@@ -27,7 +27,7 @@ openspec-ops ship      commit entire W + push + gh PR (no merge; not finish)
         │
 /ops-impl-review       post-ship impl quality (fix+test+push; auto default on)
         │
-openspec-ops merge     explicit PR merge (squash; checks green; invoke=consent)
+openspec-ops merge     explicit PR merge (squash; checks green or empty; invoke=consent)
         │
 archive → finish → prune
         │
@@ -240,7 +240,7 @@ Auto-review follow-up schedules `/ops-spec-review <change>` when `proposal.md` a
 | `start <change>` | Create or reuse worktree at `<primary>/.worktrees/<change>` on branch `<change>` |
 | `where <change>` | Print workspace path (strict: exit 5 if missing); includes `submodules[]` |
 | `ship <change>` | Commit entire worktree, push branch, open/reuse PR via `gh` (no merge/force) |
-| `merge <change>` | Merge open PR via `gh` (default squash; checks must pass; no chain) |
+| `merge <change>` | Merge open PR via `gh` (default squash; non-empty checks must pass; empty checks allowed by default; no chain) |
 | `finish <change>` | Remove worktree; if PR **merged**, delete local+remote branch (unless `--keep-branch`). Deinits submodules. Dirty → `--force` |
 | `prune <change>` | **Deprecated** — prefer finish; branch-only if no worktree + merged |
 | `doctor` | Read-only health report (stale dirs, submodules, change_location_mismatch, …) |
@@ -289,7 +289,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-where` · `ops-where` | `openspec-ops where` |
 | `/ops-ship` · `ops-ship` | `openspec-ops ship` (commit+push+gh PR; no merge) |
 | `/ops-impl-review` · `ops-impl-review` | Post-ship impl review-fix-push (tests; auto after ship default on) |
-| `/ops-merge` · `ops-merge` | Merge PR via `openspec-ops merge` (squash; checks hard gate; only when user asks) |
+| `/ops-merge` · `ops-merge` | Merge PR via `openspec-ops merge` (squash; fail/pending block; empty checks allow by default) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` (wt + merged branch cleanup) |
 | `/ops-prune` · `ops-prune` | Deprecated; prefer finish |
 | `/ops-doctor` · `ops-doctor` | `openspec-ops doctor` |
@@ -434,6 +434,16 @@ Technical: **reclaim orphan worktrees when a watched change is no longer active*
 ```bash
 export OPENSPEC_OPS_AUTO_FINISH=off   # disable
 export OPENSPEC_OPS_AUTO_FINISH=on    # aggressive clean reclaim
+
+### Merge empty checks
+
+| `OPENSPEC_OPS_MERGE_EMPTY_CHECKS` | Behavior |
+|---|---|
+| unset / `allow` (default) | Zero reported checks → allow merge |
+| `refuse` / `strict` / `fail` / `off` | Zero checks → `checks_failed` |
+
+Pending or failing checks always block, regardless of this setting.
+
 ```
 
 - Finish keeps the **branch**; it is **not** OpenSpec archive.
