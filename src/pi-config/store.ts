@@ -16,10 +16,34 @@ const SESSION = new Map<string, string>();
 export const SPEC_REVIEW_MAX_ROUNDS_KEY = "spec-review.max-rounds";
 export const SPEC_REVIEW_MAX_ROUNDS_ENV = "OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS";
 export const SPEC_REVIEW_MAX_ROUNDS_DEFAULT = 3;
-export const SPEC_REVIEW_MAX_ROUNDS_MIN = 1;
-export const SPEC_REVIEW_MAX_ROUNDS_MAX = 10;
 
-const KNOWN_KEYS = new Set([SPEC_REVIEW_MAX_ROUNDS_KEY]);
+export const IMPL_REVIEW_MAX_ROUNDS_KEY = "impl-review.max-rounds";
+export const IMPL_REVIEW_MAX_ROUNDS_ENV = "OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS";
+export const IMPL_REVIEW_MAX_ROUNDS_DEFAULT = 3;
+
+export const MAX_ROUNDS_MIN = 1;
+export const MAX_ROUNDS_MAX = 10;
+
+/** @deprecated use MAX_ROUNDS_MIN */
+export const SPEC_REVIEW_MAX_ROUNDS_MIN = MAX_ROUNDS_MIN;
+/** @deprecated use MAX_ROUNDS_MAX */
+export const SPEC_REVIEW_MAX_ROUNDS_MAX = MAX_ROUNDS_MAX;
+
+const ROUND_KEYS: Record<
+  string,
+  { env: string; defaultValue: number }
+> = {
+  [SPEC_REVIEW_MAX_ROUNDS_KEY]: {
+    env: SPEC_REVIEW_MAX_ROUNDS_ENV,
+    defaultValue: SPEC_REVIEW_MAX_ROUNDS_DEFAULT,
+  },
+  [IMPL_REVIEW_MAX_ROUNDS_KEY]: {
+    env: IMPL_REVIEW_MAX_ROUNDS_ENV,
+    defaultValue: IMPL_REVIEW_MAX_ROUNDS_DEFAULT,
+  },
+};
+
+const KNOWN_KEYS = new Set(Object.keys(ROUND_KEYS));
 
 export function resetSessionConfig(): void {
   SESSION.clear();
@@ -37,7 +61,7 @@ export function setSessionValue(key: string, value: string): void {
   if (!isKnownKey(key)) {
     throw new Error(`Unknown config key '${key}'. Known: ${listKnownKeys().join(", ")}`);
   }
-  if (key === SPEC_REVIEW_MAX_ROUNDS_KEY) {
+  if (key in ROUND_KEYS) {
     SESSION.set(key, String(parseMaxRoundsStrict(value)));
     return;
   }
@@ -57,13 +81,13 @@ export function parseMaxRoundsStrict(raw: string): number {
   const t = String(raw).trim();
   if (!/^\d+$/.test(t)) {
     throw new Error(
-      `spec-review.max-rounds must be an integer ${SPEC_REVIEW_MAX_ROUNDS_MIN}–${SPEC_REVIEW_MAX_ROUNDS_MAX}`,
+      `max-rounds must be an integer ${MAX_ROUNDS_MIN}–${MAX_ROUNDS_MAX}`,
     );
   }
   const n = Number.parseInt(t, 10);
-  if (n < SPEC_REVIEW_MAX_ROUNDS_MIN || n > SPEC_REVIEW_MAX_ROUNDS_MAX) {
+  if (n < MAX_ROUNDS_MIN || n > MAX_ROUNDS_MAX) {
     throw new Error(
-      `spec-review.max-rounds must be an integer ${SPEC_REVIEW_MAX_ROUNDS_MIN}–${SPEC_REVIEW_MAX_ROUNDS_MAX}`,
+      `max-rounds must be an integer ${MAX_ROUNDS_MIN}–${MAX_ROUNDS_MAX}`,
     );
   }
   return n;
@@ -79,26 +103,44 @@ export function parseMaxRoundsLoose(raw: string | undefined): number | undefined
   }
 }
 
-export function getEffectiveMaxRounds(
+function getEffectiveRoundsForKey(
+  key: string,
   env: NodeJS.ProcessEnv = process.env,
 ): { value: number; source: ConfigSource } {
-  const session = SESSION.get(SPEC_REVIEW_MAX_ROUNDS_KEY);
+  const meta = ROUND_KEYS[key];
+  if (!meta) {
+    throw new Error(`Unknown rounds key '${key}'`);
+  }
+  const session = SESSION.get(key);
   if (session != null) {
     return { value: parseMaxRoundsStrict(session), source: "session" };
   }
-  const fromEnv = parseMaxRoundsLoose(env[SPEC_REVIEW_MAX_ROUNDS_ENV]);
+  const fromEnv = parseMaxRoundsLoose(env[meta.env]);
   if (fromEnv != null) {
     return { value: fromEnv, source: "env" };
   }
-  return { value: SPEC_REVIEW_MAX_ROUNDS_DEFAULT, source: "default" };
+  return { value: meta.defaultValue, source: "default" };
+}
+
+/** Spec-review max rounds (back-compat helper). */
+export function getEffectiveMaxRounds(
+  env: NodeJS.ProcessEnv = process.env,
+): { value: number; source: ConfigSource } {
+  return getEffectiveRoundsForKey(SPEC_REVIEW_MAX_ROUNDS_KEY, env);
+}
+
+export function getEffectiveImplReviewMaxRounds(
+  env: NodeJS.ProcessEnv = process.env,
+): { value: number; source: ConfigSource } {
+  return getEffectiveRoundsForKey(IMPL_REVIEW_MAX_ROUNDS_KEY, env);
 }
 
 export function getEffectiveEntry(
   key: string,
   env: NodeJS.ProcessEnv = process.env,
 ): ConfigEntry {
-  if (key === SPEC_REVIEW_MAX_ROUNDS_KEY) {
-    const { value, source } = getEffectiveMaxRounds(env);
+  if (key in ROUND_KEYS) {
+    const { value, source } = getEffectiveRoundsForKey(key, env);
     return { key, value: String(value), source };
   }
   if (!isKnownKey(key)) {
@@ -116,9 +158,13 @@ export function formatConfigInjection(env: NodeJS.ProcessEnv = process.env): str
   const lines = showAll(env).map(
     (e) => `${e.key}=${e.value} (source=${e.source})`,
   );
+  const impl = getEffectiveImplReviewMaxRounds(env);
+  const spec = getEffectiveMaxRounds(env);
   return [
     "openspec-ops config (effective for this Pi session; not a project file):",
     ...lines.map((l) => `  ${l}`),
     "Change with /ops-config set|get|show|unset|reset. Session values reset when Pi restarts.",
+    `For /ops-spec-review: use max rounds = ${spec.value} (source=${spec.source}).`,
+    `For /ops-impl-review: use max rounds = ${impl.value} (source=${impl.source}).`,
   ].join("\n");
 }

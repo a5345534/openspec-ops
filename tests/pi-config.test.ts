@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  IMPL_REVIEW_MAX_ROUNDS_ENV,
+  IMPL_REVIEW_MAX_ROUNDS_KEY,
   SPEC_REVIEW_MAX_ROUNDS_DEFAULT,
   SPEC_REVIEW_MAX_ROUNDS_ENV,
   SPEC_REVIEW_MAX_ROUNDS_KEY,
+  getEffectiveImplReviewMaxRounds,
   getEffectiveMaxRounds,
   parseMaxRoundsStrict,
   resetSessionConfig,
@@ -61,9 +64,26 @@ describe("getEffectiveMaxRounds precedence", () => {
   });
 });
 
+describe("impl-review.max-rounds", () => {
+  it("defaults to 3 independent of spec-review", () => {
+    setSessionValue(SPEC_REVIEW_MAX_ROUNDS_KEY, "5");
+    const e = getEffectiveImplReviewMaxRounds({});
+    expect(e).toEqual({ value: 3, source: "default" });
+  });
+
+  it("session > env > default", () => {
+    const env = { [IMPL_REVIEW_MAX_ROUNDS_ENV]: "4" };
+    expect(getEffectiveImplReviewMaxRounds(env)).toEqual({ value: 4, source: "env" });
+    setSessionValue(IMPL_REVIEW_MAX_ROUNDS_KEY, "2");
+    expect(getEffectiveImplReviewMaxRounds(env)).toEqual({ value: 2, source: "session" });
+  });
+});
+
 describe("showAll", () => {
-  it("lists known keys", () => {
+  it("lists both round keys", () => {
     const rows = showAll({});
-    expect(rows.some((r) => r.key === SPEC_REVIEW_MAX_ROUNDS_KEY)).toBe(true);
+    const keys = rows.map((r) => r.key);
+    expect(keys).toContain(SPEC_REVIEW_MAX_ROUNDS_KEY);
+    expect(keys).toContain(IMPL_REVIEW_MAX_ROUNDS_KEY);
   });
 });

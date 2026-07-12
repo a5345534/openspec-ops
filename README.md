@@ -25,6 +25,8 @@ openspec-ops start / auto-ensure / intercept
         │
 openspec-ops ship      commit entire W + push + gh PR (no merge; not finish)
         │
+/ops-impl-review       post-ship impl quality (fix+test+push; auto default on)
+        │
 review + merge → main
         │
 /opsx-archive          fold specs; default on mainline checkout after merge
@@ -67,6 +69,8 @@ openspec-ops start <change>     # branch + worktree
 /opsx:propose  →  review  →  /opsx:apply
         │
 openspec-ops ship <change>      # commit worktree + push + gh PR (no merge)
+        │
+/ops-impl-review <change>       # post-ship: specs/tasks/diff/tests; fix+push
         │
 review + merge → main
         │
@@ -277,6 +281,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-start` · `ops-start` | `openspec-ops start` |
 | `/ops-where` · `ops-where` | `openspec-ops where` |
 | `/ops-ship` · `ops-ship` | `openspec-ops ship` (commit+push+gh PR; no merge) |
+| `/ops-impl-review` · `ops-impl-review` | Post-ship impl review-fix-push (tests; auto after ship default on) |
 | `/ops-prune` · `ops-prune` | `openspec-ops prune` (delete branch if PR merged; after finish) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` |
 | `/ops-doctor` · `ops-doctor` | `openspec-ops doctor` |
@@ -293,6 +298,8 @@ Typical loop in Pi:
 /opsx-apply
         │
 /ops-ship <change>       # commit worktree + push + PR (requires gh; no merge)
+        │
+/ops-impl-review <change> # post-ship quality (auto default on)
         │
 merge → /opsx-archive → /ops-finish → /ops-prune  # prune only if PR merged
 ```
@@ -338,6 +345,12 @@ Session-only settings (not a project config file; reset when Pi restarts).
 
 Precedence: **session > env > default**.  
 `spec-review.max-rounds` default **3** (env: `OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS`).
+`impl-review.max-rounds` default **3** (env: `OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS`).
+
+### Auto impl-review after ship
+
+Default **on** (`OPENSPEC_OPS_AUTO_IMPL_REVIEW`). After successful ship, agent runs `/ops-impl-review` (may edit code, test, push). Set `off` to skip. Does **not** merge.
+
 
 ## Pi extension: auto-ensure + auto-review + auto-finish
 

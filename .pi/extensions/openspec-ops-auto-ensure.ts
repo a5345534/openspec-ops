@@ -50,7 +50,6 @@ import {
 import {
   formatConfigInjection,
   getEffectiveEntry,
-  getEffectiveMaxRounds,
   isKnownKey,
   listKnownKeys,
   resetSessionConfig,
@@ -298,7 +297,6 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async () => {
     const configBlock = formatConfigInjection(process.env);
-    const maxR = getEffectiveMaxRounds(process.env);
 
     // Workspace path handoff — REQUIRED write root (ensure does not chdir)
     if (!active) {
@@ -331,7 +329,6 @@ export default function (pi: ExtensionAPI) {
     lines.push(
       `Note: ensure/start does NOT switch the process cwd by itself. OpenSpec propose/apply/archive semantics are unchanged; workspace was ensured by harness only.`,
       configBlock,
-      `For /ops-spec-review: use max rounds = ${maxR.value} (source=${maxR.source}).`,
     );
 
     // One-shot handoff: clear after inject so later turns do not re-assert stale mode

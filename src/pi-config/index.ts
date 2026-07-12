@@ -1,4 +1,9 @@
 export {
+  IMPL_REVIEW_MAX_ROUNDS_DEFAULT,
+  IMPL_REVIEW_MAX_ROUNDS_ENV,
+  IMPL_REVIEW_MAX_ROUNDS_KEY,
+  MAX_ROUNDS_MAX,
+  MAX_ROUNDS_MIN,
   SPEC_REVIEW_MAX_ROUNDS_DEFAULT,
   SPEC_REVIEW_MAX_ROUNDS_ENV,
   SPEC_REVIEW_MAX_ROUNDS_KEY,
@@ -6,6 +11,7 @@ export {
   SPEC_REVIEW_MAX_ROUNDS_MIN,
   formatConfigInjection,
   getEffectiveEntry,
+  getEffectiveImplReviewMaxRounds,
   getEffectiveMaxRounds,
   getSessionValue,
   isKnownKey,

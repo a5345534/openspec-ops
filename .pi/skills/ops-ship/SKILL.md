@@ -79,12 +79,14 @@ openspec-ops ship "<change>" [flags] --json
 7. On `submodule_detached_dirty`: tell user to branch/commit inside the submodule first.
 8. On `pr_backend_unavailable`: install/auth `gh` (`gh auth login`).
 9. On `pr_failed` after push: fix PR issue and **re-run ship** (clean tree → no duplicate commit).
+10. **Auto impl-review (default on):** Unless `OPENSPEC_OPS_AUTO_IMPL_REVIEW=off`, after **successful** ship continue with `/ops-impl-review <change>` (full review→fix→test→push loop). Do not skip silently when policy is on. Impl-review push must **not** re-invoke ship solely to re-arm this step.
 
 ## Guardrails
 
 - Ship is not archive and not finish.
 - OpenSpec `/opsx-*` flows remain separate.
 - Never auto-merge.
+- Post-ship auto impl-review may edit code and push; users can set `OPENSPEC_OPS_AUTO_IMPL_REVIEW=off`.
 
 ## Fixed phrases
 

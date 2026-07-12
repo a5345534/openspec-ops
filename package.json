@@ -35,7 +35,9 @@
     ".pi/skills/ops-ship",
     ".pi/skills/ops-prune",
     ".pi/prompts/ops-ship.md",
-    ".pi/prompts/ops-prune.md"
+    ".pi/prompts/ops-prune.md",
+    ".pi/skills/ops-impl-review",
+    ".pi/prompts/ops-impl-review.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

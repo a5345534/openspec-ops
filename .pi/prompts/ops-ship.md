@@ -35,9 +35,11 @@ Require `schemaVersion === 1`. Use exit code + `error.code`.
 2. Prefer consent if large/unexpected diffs.
 3. Run ship with `--json`.
 4. Report PR URL; on `submodule_detached_dirty` fix submodule first; on `pr_failed` after push, re-run after fixing `gh`.
+5. Unless `OPENSPEC_OPS_AUTO_IMPL_REVIEW=off` (default **on**), after successful ship run `/ops-impl-review <change>`. Do not re-ship only to re-trigger that step.
 
 ## Guardrails
 
 - Do not merge PR unless user explicitly asks.
 - Do not finish/archive as part of ship.
 - Do not force-push.
+- Auto impl-review may edit code and push after ship.
