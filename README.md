@@ -15,26 +15,26 @@ OpenSpec 操作自动化层（旁路增强，不修改 OpenSpec 本体）。
 Default order (OpenSpec team-compatible; **merge before archive**):
 
 ```text
-openspec-ops start     # explicit only (no auto-ensure)
+/ops-start <change>              # explicit worktree (no auto-ensure)
         │
-/opsx-propose          plan artifacts in worktree W
+/opsx-propose <change>           # plan artifacts in worktree W
         │
-/ops-spec-review  # full-review rounds; fix verify is in-round       iterative plan/spec review-fix (before apply; refuses archived phase)
+/ops-spec-review <change>        # full-review rounds; in-round fix verify
         │
-/opsx-apply            implement in W (extension binds path when name known)
+/opsx-apply                      # implement in W
         │
-openspec-ops ship      commit entire W + push + gh PR (no merge; not finish)
+/ops-ship <change>               # commit W + push + gh PR (no merge)
         │
-/ops-impl-review       post-ship impl full-review rounds (manual or /ops-next)
+/ops-impl-review <change>        # full-review rounds (or pick via /ops-next)
         │
-openspec-ops merge     explicit PR merge (squash; checks green or empty; invoke=consent)
+/ops-merge <change>              # squash; checks green or empty; invoke=consent
         │
-archive → finish → prune
+/opsx-archive                    # fold specs on mainline after merge
         │
-/opsx-archive          fold specs; default on mainline checkout after merge
-        │
-openspec-ops finish    remove worktree; if PR merged also delete local+remote branch
-                       (prune deprecated; --keep-branch to retain branch)
+/ops-finish <change>             # remove worktree; delete merged branches
+                                 # (prune deprecated; --keep-branch to keep branch)
+
+Between steps: /ops-next [change]  # guided menu (omit name → pick change)
 ```
 
 - **ensure ≠ cwd** — skills/extension must use `where.path` explicitly ([snippet](docs/snippets/worktree-alignment-block.md)).
@@ -78,7 +78,7 @@ openspec-ops ship <change>      # commit worktree + push + gh PR (no merge)
         │
 openspec-ops merge <change>     # squash merge when checks green
         │
-/opsx-archive → finish → prune
+/opsx-archive → finish
         │
 /opsx:archive                   # 原版 OpenSpec
         │
@@ -176,7 +176,7 @@ npm link
 }
 ```
 
-- **Ships:** `ops-start` / `ops-where` / `ops-finish` / `ops-doctor` / `ops-spec-review` / `ops-ship` / `ops-prune` + extension + CLI
+- **Ships:** `ops-start` / `ops-where` / `ops-finish` / `ops-doctor` / `ops-spec-review` / `ops-ship` / `ops-merge` / `ops-next` + extension + CLI (`ops-prune` deprecated)
 - **Does not ship (as package skills/prompts):** `openspec-*`, `opsx-*` — your project keeps its own from `openspec init` / `openspec update`
 - Vendored upstream copies (if any) live under `vendor/openspec-pi-ref/` for reference only and are **not** in `pi.*`
 
@@ -288,7 +288,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-start` · `ops-start` | `openspec-ops start` |
 | `/ops-where` · `ops-where` | `openspec-ops where` |
 | `/ops-ship` · `ops-ship` | `openspec-ops ship` (commit+push+gh PR; no merge) |
-| `/ops-impl-review` · `ops-impl-review` | Post-ship impl full-review rounds (fix+push in-round; choose via /ops-next) | (full-review rounds; in-round fix/push verify)
+| `/ops-impl-review` · `ops-impl-review` | Post-ship impl full-review rounds (fix+push in-round; choose via /ops-next) |
 | `/ops-merge` · `ops-merge` | Merge PR via `openspec-ops merge` (squash; fail/pending block; empty checks allow by default) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` (wt + merged branch cleanup) |
 | `/ops-prune` · `ops-prune` | Deprecated; prefer finish |
