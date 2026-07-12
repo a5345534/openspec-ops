@@ -1,10 +1,4 @@
-# pi-auto-finish-on-archive Specification
-
-## Purpose
-
-Former auto-finish after archive. **Retired — no runtime.** Use guided next-step or `/ops-finish`.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Capability retired
 This capability SHALL be considered retired with **no runtime**. Operators MUST use guided next-step or `/ops-finish` explicitly. Environment variable `OPENSPEC_OPS_AUTO_FINISH` MUST NOT be documented as a supported live switch.

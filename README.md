@@ -366,7 +366,18 @@ After ship, use `/ops-next` to choose impl-review / re-ship / merge. Impl-review
 
 ## Pi extension: guided lifecycle
 
-Extension: `.pi/extensions/openspec-ops-auto-ensure.ts` (name historical).
+### Retired auto capabilities (no runtime)
+
+| Former capability | Use instead |
+|---|---|
+| `pi-auto-ensure-on-propose` / `OPENSPEC_OPS_AUTO_START` | `/ops-start` |
+| `pi-auto-review-follow-up` / `OPENSPEC_OPS_AUTO_REVIEW` | `/ops-next` or `/ops-spec-review` |
+| `pi-auto-impl-review-follow-up` / `OPENSPEC_OPS_AUTO_IMPL_REVIEW` | `/ops-next` or `/ops-impl-review` |
+| `pi-auto-finish-on-archive` / `OPENSPEC_OPS_AUTO_FINISH` | `/ops-next` or `/ops-finish` |
+
+
+
+Extension: `.pi/extensions/openspec-ops-guided.ts` (guided lifecycle).
 
 - **`/ops-start`** — manual worktree only  
 - **`/ops-next <change>`** — hard-coded next-step menu (`ctx.ui.select` or text; never auto-picks)  

@@ -1,10 +1,4 @@
-# pi-auto-impl-review-follow-up Specification
-
-## Purpose
-
-Former auto impl-review-after-ship. **Retired — no runtime.** Choose impl-review via `/ops-next` or run manually.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Capability retired
 This capability SHALL be considered retired with **no runtime**. Operators MUST choose impl-review via `/ops-next` or run `/ops-impl-review` manually. Environment variable `OPENSPEC_OPS_AUTO_IMPL_REVIEW` MUST NOT be documented as a supported live switch.

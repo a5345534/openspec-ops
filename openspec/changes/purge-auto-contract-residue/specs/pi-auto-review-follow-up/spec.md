@@ -1,10 +1,4 @@
-# pi-auto-review-follow-up Specification
-
-## Purpose
-
-Former auto-review follow-up after propose. Automatic scheduling is **retired**; manual and guided ops-spec-review remain.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Manual ops-spec-review remains available
 The system MUST keep the ops-spec-review skill/prompt usable when the operator runs it manually or selects it via guided next-step. Manual review MUST NOT depend on auto-review watches. Environment variable `OPENSPEC_OPS_AUTO_REVIEW` MUST NOT be documented as a supported live switch.

@@ -26,7 +26,7 @@ Implement tasks from an OpenSpec change.
    - `openspec-ops start` / auto-ensure do **NOT** switch process cwd by themselves.
    - Run `openspec-ops where "<name>" --json` when the change name is known.
    - On success: use `result.path` as cwd for implementation edits and OpenSpec CLI calls for that change.
-   - If alignment is required (`openspec-ops` resolvable and `OPENSPEC_OPS_AUTO_START` not `off`) and where fails: warn or stop before writing under primary `openspec/changes/<name>/` as if it were the workspace.
+   - If alignment is required (`openspec-ops` resolvable and a change worktree is in use) and where fails: warn or stop before writing under primary `openspec/changes/<name>/` as if it were the workspace.
 <!-- openspec-ops:worktree-alignment END -->
 
 2. **Check status to understand the schema**

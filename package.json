@@ -1,7 +1,7 @@
 {
   "name": "openspec-ops",
   "version": "0.1.0",
-  "description": "OpenSpec ops automation: worktree CLI + Pi extension/skills (ensure, review follow-up, finish orphan reclaim)",
+  "description": "OpenSpec ops lifecycle: worktree CLI + Pi skills/extension (explicit start, guided /ops-next, ship/merge/finish; no auto chain)",
   "type": "module",
   "keywords": [
     "pi-package",

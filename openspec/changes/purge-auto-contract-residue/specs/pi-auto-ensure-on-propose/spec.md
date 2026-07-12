@@ -1,10 +1,4 @@
-# pi-auto-ensure-on-propose Specification
-
-## Purpose
-
-Former auto-ensure on propose. **Retired — no runtime.** Use explicit `/ops-start` and guided `/ops-next`.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Capability retired
 This capability SHALL be considered retired with **no runtime**. Operators MUST use explicit `/ops-start` and guided `/ops-next` instead of any automatic ensure-on-propose behavior. Environment variable `OPENSPEC_OPS_AUTO_START` MUST NOT be documented as a supported live switch.
