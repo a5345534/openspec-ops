@@ -179,38 +179,48 @@ On success, human-readable mode MUST end with a line that is solely the absolute
 
 ---
 
-### Requirement: Finish removes a worktree only
-`openspec-ops finish <change>` SHALL remove the change's registered worktree and MUST retain the local branch by default.
+### Requirement: Finish removes worktree and retains branch unless merged cleanup applies
+`openspec-ops finish <change>` SHALL remove the change's registered worktree when one exists (subject to dirty/`--force` and submodule teardown rules).
+
+Finish MUST NOT run OpenSpec archive, MUST NOT merge, and MUST NOT push except as required to delete a remote branch during merged-branch cleanup.
+
+Finish MUST retain the local branch when no merged PR is verified for the change head, and when `--keep-branch` is set. Finish MAY delete local and remote change branches when a merged PR is verified and `--keep-branch` is not set.
 
 If the worktree has a dirty working tree and `--force` is not set, the process MUST exit with code `4` and error code `worktree_dirty`.
 
-If the workspace cannot be resolved, the process MUST exit with code `5` and error code `not_found`.
+With `--force`, the system MAY remove a dirty worktree. `--force` MUST NOT force-delete unmerged branches.
 
-With `--force`, the system MAY remove a dirty worktree.
+When no worktree is registered, finish MUST NOT fail with `not_found` solely due to missing worktree if merged-branch cleanup still applies.
 
-`finish` MUST NOT run OpenSpec archive, MUST NOT merge, MUST NOT delete the branch in Phase 0, and MUST NOT push.
+#### Scenario: Clean finish with unmerged branch keeps branch
+- **WHEN** the worktree exists and is clean
+- **AND** no merged PR exists for the change branch
+- **AND** the user runs `openspec-ops finish <change> --json`
+- **THEN** the worktree is removed
+- **AND** the local branch is retained
 
-#### Scenario: Clean finish
-- **WHEN** a clean worktree exists for `add-dark-mode`
-- **AND** the user runs `openspec-ops finish add-dark-mode --json`
-- **THEN** the process exits with code `0`
-- **AND** `result.action` is `removed`
-- **AND** `result.branchDeleted` is `false`
-- **AND** the worktree path is no longer registered
-- **AND** branch `add-dark-mode` still exists
+#### Scenario: Clean finish with merged PR may delete branch
+- **WHEN** the worktree exists and is clean
+- **AND** a merged PR exists for the change branch
+- **AND** finish is run without `--keep-branch`
+- **THEN** the worktree is removed
+- **AND** local and remote branches may be deleted when present
 
 #### Scenario: Dirty finish refused
-- **WHEN** the worktree for `add-dark-mode` is dirty
-- **AND** the user runs `openspec-ops finish add-dark-mode`
-- **THEN** the process exits with code `4`
-- **AND** the error code is `worktree_dirty`
-- **AND** the worktree still exists
+- **WHEN** the worktree is dirty
+- **AND** the user runs finish without `--force`
+- **THEN** the command fails without removing the worktree
 
 #### Scenario: Forced dirty finish
-- **WHEN** the worktree for `add-dark-mode` is dirty
-- **AND** the user runs `openspec-ops finish add-dark-mode --force`
-- **THEN** the process exits with code `0`
-- **AND** the worktree is removed
+- **WHEN** the worktree is dirty
+- **AND** the user runs finish with `--force`
+- **THEN** the worktree may be removed
+- **AND** unmerged branches are still not force-deleted solely due to `--force`
+
+#### Scenario: not_found worktree does not hard-fail finish if branch cleanup applies
+- **WHEN** no worktree exists
+- **AND** finish is invoked for a change with a merged PR and existing local or remote branch
+- **THEN** finish does not fail with not_found solely due to missing worktree
 
 ---
 
@@ -349,18 +359,24 @@ Ship MUST resolve the target worktree using the same change name → path/branch
 ---
 
 ### Requirement: prune is a workspace lifecycle command
-The openspec-ops CLI SHALL expose `prune` as a first-class command that accepts a change name and optional remote/branch overrides, documented in CLI help.
+The openspec-ops CLI SHALL expose `prune` as a command that accepts a change name and optional remote/branch overrides, documented in CLI help. Prune is deprecated for primary closeout in favor of finish.
 
 #### Scenario: help lists prune
 - **WHEN** a user runs `openspec-ops --help`
 - **THEN** usage includes a `prune` command summary
 
-### Requirement: finish remains non-deleting for branches by default
-`finish` MUST continue to keep the change branch by default (`branchDeleted` false). Prune is the explicit path for branch deletion after merge.
+### Requirement: Finish deletes merged branches unless keep-branch
+`openspec-ops finish` SHALL delete the change branch after worktree removal when a merged PR is verified and `--keep-branch` is not set. Operators MUST be able to pass `--keep-branch` to skip all branch deletion.
 
-#### Scenario: finish does not require branch delete
-- **WHEN** finish succeeds without new flags that opt into deletion
-- **THEN** the branch is retained as in prior lifecycle behavior
+When no merged PR is verified, finish MUST retain the branch (`branchDeleted` false unless local delete succeeded for merged cleanup).
+
+#### Scenario: result reports whether branch was deleted
+- **WHEN** finish completes
+- **THEN** the result includes whether the local branch was deleted or kept (e.g. `branchDeleted` and/or structured branch fields)
+
+#### Scenario: unmerged keeps branch
+- **WHEN** finish succeeds and no merged PR is verified
+- **THEN** the branch is retained
 
 
 ---
