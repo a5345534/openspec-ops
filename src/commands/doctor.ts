@@ -10,6 +10,7 @@ import {
   inferChangeFromLeaf,
   resolveRepoContext,
 } from "../resolve.js";
+import { detectSpecReviewPhase } from "../lifecycle/phase.js";
 import {
   doctorIssuesFromSubmodules,
   probeTopLevelSubmodules,
@@ -112,6 +113,47 @@ export function runDoctor(options: GlobalOptions): DoctorResult {
             hint: "Prefer writing under worktree path from openspec-ops where; see docs/snippets/worktree-alignment-block.md",
           });
         }
+      }
+    }
+  }
+
+  // Active vs archived split-brain (primary + linked worktrees)
+  if (hasOpenspecTree(ctx.primaryPath, ctx.worktrees)) {
+    const roots = [
+      ctx.primaryPath,
+      ...worktrees.map((w) => w.path).filter((p) => existsSync(p)),
+    ];
+    const names = new Set<string>();
+    for (const wt of worktrees) {
+      if (wt.inferredChange) names.add(wt.inferredChange);
+    }
+    // Also scan primary active change dir names
+    const primaryChanges = join(ctx.primaryPath, "openspec", "changes");
+    if (existsSync(primaryChanges)) {
+      try {
+        for (const name of readdirSync(primaryChanges)) {
+          if (name === "archive") continue;
+          const full = join(primaryChanges, name);
+          try {
+            if (statSync(full).isDirectory()) names.add(name);
+          } catch {
+            /* skip */
+          }
+        }
+      } catch {
+        /* skip */
+      }
+    }
+    for (const name of names) {
+      const scan = detectSpecReviewPhase(name, roots);
+      if (scan.phase === "active_and_archived") {
+        issues.push({
+          id: "change_location_mismatch",
+          severity: "warning",
+          path: scan.activeRoots[0] ?? ctx.primaryPath,
+          message: `Change "${name}" has both active openspec/changes/${name} and archive entry (split-brain)`,
+          hint: "Do not re-run /ops-spec-review (pre-apply). Merge/sync mainline archive; remove residual active dir if duplicate. Default: merge → archive on mainline → finish.",
+        });
       }
     }
   }
