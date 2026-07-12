@@ -19,7 +19,7 @@ openspec-ops start     # explicit only (no auto-ensure)
         │
 /opsx-propose          plan artifacts in worktree W
         │
-/ops-spec-review       iterative plan/spec review-fix (before apply; refuses archived phase)
+/ops-spec-review  # full-review rounds; fix verify is in-round       iterative plan/spec review-fix (before apply; refuses archived phase)
         │
 /opsx-apply            implement in W (extension binds path when name known)
         │

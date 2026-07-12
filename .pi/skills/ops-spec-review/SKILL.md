@@ -2,9 +2,9 @@
 name: ops-spec-review
 description: >
   Iterative OpenSpec plan/spec quality gate after propose and before apply.
-  Reviews proposal/design/specs/tasks, fixes major findings in artifacts, re-reviews
-  until clean or max rounds. Use /ops-spec-review. Not code or PR review.
-  Refuses archived / wrong-phase changes unless historical override.
+  Each round is a full review; fix verification is in-round; after fixes another
+  full review is required before ready (max full-review rounds). Use /ops-spec-review.
+  Not code or PR review. Refuses archived / wrong-phase unless historical override.
 license: MIT
 compatibility: openspec CLI + openspec-ops where; Pi session config via /ops-config
 metadata:
@@ -34,19 +34,30 @@ Optional soft warn: if all tasks are `[x]` and context says already shipped/appl
 
 Auto-review is **removed**. Run this skill manually or choose it via `/ops-next`.
 
-## Behavior: review → fix → re-review
+## Behavior: full review rounds (not verify-as-round)
 
 Only after phase check allows:
 
 1. Resolve change (worktree-aligned).
-2. Loop up to **max rounds** (see Config):
-   - Review artifacts; classify **major** vs **minor**
-   - If **no major** → stop with **ready for apply** (list residual minors)
-   - Else **edit artifacts only** under the change root to fix majors (minimal; no scope expand; no product `src/` implementation)
-   - Re-review
-3. If majors remain after max rounds → **needs human** with remaining majors.
+2. Loop up to **max full-review rounds** (see Config). **One round = one full review** of current proposal/design/specs/tasks.
 
-**Minor findings alone must not force another round.**  
+   **Each full review MUST:**
+   - Re-read current artifacts as a whole (not only the previous major list)
+   - Classify **major** vs **minor** (prior majors MAY be extra checks, not a scope ceiling)
+   - Prefer `openspec validate <change>` when available; non-zero → **major**
+
+   **Then:**
+   - If **zero majors** → stop **ready for apply** (list residual minors). Do **not** invent another round.
+   - If **majors** and rounds remain:
+     1. **Fix** artifacts only (change root; minimal; no product `src/`)
+     2. **In-round verify** those fixes landed (same round; NOT a separate review round)
+     3. If full-review rounds still remain → **start another full review round** (step 2).  
+        Do **not** declare ready solely because in-round verify passed.
+   - If majors remain and no full-review rounds remain (including: last round fixed majors but no confirmatory full review left) → **needs human** (list majors / “pending confirmatory full review; re-run /ops-spec-review”).
+
+3. **Forbidden:** labeling a verify-only pass as “Round N”; using Round N only to check previous fixes.
+
+**Minor findings alone must not force another full review round.**  
 If unsure whether something is major → treat as **minor**.
 
 ### Major checklist (examples)
@@ -56,6 +67,7 @@ If unsure whether something is major → treat as **minor**.
 - Tasks miss main requirement path
 - Contradicts stated non-goals / scope
 - Unimplementable or empty SHALL
+- `openspec validate` fails (when run)
 
 ### Minor (do not loop solely for these)
 
@@ -91,11 +103,18 @@ Report:
 
 ```text
 Phase: ok | archived | active_and_archived
-Rounds used: k / max
-Fixes applied: …
-Residual minors: …
+Round 1 (full review)
+  Majors: …
+  Minors: …
+  In-round fix+verify: none | cleared | failed
+Round 2 (full review)   # only if needed after fixes or further issues
+  Majors: none
+  Residual minors: …
+Rounds used: k / max   # k = number of full reviews only
 Verdict: ready for apply | needs human | phase_mismatch
 ```
+
+Do **not** invent a round whose only content is “verified previous fixes.”
 
 ## Guardrails
 
