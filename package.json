@@ -40,7 +40,9 @@
     ".pi/prompts/ops-impl-review.md",
     ".pi/skills/ops-merge",
     ".pi/prompts/ops-merge.md",
-    ".pi/skills/ops-next"
+    ".pi/skills/ops-next",
+    ".pi/skills/ops-deliver",
+    ".pi/prompts/ops-deliver.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
