@@ -25,7 +25,7 @@ openspec-ops start     # explicit only (no auto-ensure)
         │
 openspec-ops ship      commit entire W + push + gh PR (no merge; not finish)
         │
-/ops-impl-review       post-ship impl quality (fix+test+push; manual or /ops-next)
+/ops-impl-review       post-ship impl full-review rounds (manual or /ops-next)
         │
 openspec-ops merge     explicit PR merge (squash; checks green or empty; invoke=consent)
         │
@@ -288,7 +288,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-start` · `ops-start` | `openspec-ops start` |
 | `/ops-where` · `ops-where` | `openspec-ops where` |
 | `/ops-ship` · `ops-ship` | `openspec-ops ship` (commit+push+gh PR; no merge) |
-| `/ops-impl-review` · `ops-impl-review` | Post-ship impl review-fix-push (tests; auto after ship default on) |
+| `/ops-impl-review` · `ops-impl-review` | Post-ship impl full-review rounds (fix+push in-round; choose via /ops-next) | (full-review rounds; in-round fix/push verify)
 | `/ops-merge` · `ops-merge` | Merge PR via `openspec-ops merge` (squash; fail/pending block; empty checks allow by default) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` (wt + merged branch cleanup) |
 | `/ops-prune` · `ops-prune` | Deprecated; prefer finish |
