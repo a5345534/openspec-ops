@@ -20,7 +20,10 @@ After a lifecycle step finishes, **ask what to do next**. Never auto-start the n
 
 - **Optional:** kebab change name  
   - `/ops-next my-change` — skip pick; go to station menu  
-  - `/ops-next` — discover candidates (worktrees + active `openspec/changes/*`)  
+  - `/ops-next` — discover candidates:
+    - active `openspec/changes/<kebab>/` (not archive)
+    - `.worktrees/<kebab>/` (and cwd if it is under `.worktrees/`)
+    - **not** the package/repo folder name (e.g. never treat `openspec-ops` install root as a change)
     - 0 → notify  
     - 1 → use it  
     - N → `ui.select` pick change (headless: print list, re-run with name)
