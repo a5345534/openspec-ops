@@ -18,11 +18,12 @@ Harness-neutral git worktree lifecycle for OpenSpec changes.
 Usage:
   openspec-ops start  <change> [--path P] [--branch B] [--base REF] [--json] [--repo PATH]
   openspec-ops where  <change> [--path P] [--branch B] [--json] [--repo PATH]
-  openspec-ops finish <change> [--path P] [--branch B] [--force] [--json] [--repo PATH]
-                      # deinits top-level submodules in the worktree, then removes it (branch kept)
+  openspec-ops finish <change> [--path P] [--branch B] [--force] [--keep-branch] [--remote R] [--json] [--repo PATH]
+                      # remove worktree (deinit submodules); if PR merged, delete local+remote branch
+                      # --keep-branch: never delete branches; --force: dirty worktree only
   openspec-ops ship   <change> [ship flags] [--json] [--repo PATH]
   openspec-ops merge  <change> [--method squash|merge|rebase] [--json] [--repo PATH]
-  openspec-ops prune  <change> [--remote R] [--branch B] [--json] [--repo PATH]
+  openspec-ops prune  <change> [--remote R] [--branch B] [--json] [--repo PATH]  # deprecated: prefer finish
   openspec-ops doctor [--json] [--repo PATH]
 
 Ship flags:
@@ -47,8 +48,10 @@ Defaults:
 Ship commits the entire worktree (git add -A), pushes without --force, opens a PR via gh.
 Ship does not merge, archive, or finish the worktree.
 
-Prune deletes local+remote change branches only when a merged PR exists for that head
-and no worktree is registered (run finish first). Never force-deletes unmerged branches.
+Finish closeout: remove worktree when present; if PR merged (gh), delete local+remote branch
+unless --keep-branch. Works without worktree (branch-only). Never deletes unmerged branches.
+
+Prune is deprecated (branch-only compat when no worktree). Prefer finish for closeout.
 
 Merge merges the open PR for the change branch via gh (default --squash).
 Invoking merge is consent (no second confirm). Checks must be green (hard block).
@@ -83,6 +86,10 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (arg === "--force") {
       flags.force = true;
+      continue;
+    }
+    if (arg === "--keep-branch") {
+      flags["keep-branch"] = true;
       continue;
     }
     if (arg === "--draft") {
@@ -203,6 +210,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           path,
           branch,
           force,
+          keepBranch: Boolean(parsed.flags["keep-branch"]),
+          remote: flagString(parsed.flags, "remote") ?? "origin",
         });
         return 0;
       }

@@ -1,4 +1,8 @@
-import { branchExists, listWorktrees, runGit } from "../git.js";
+/**
+ * @deprecated Prefer `openspec-ops finish` for closeout (worktree + merged branches).
+ * prune remains a thin branch-only entry for compatibility.
+ */
+import { listWorktrees } from "../git.js";
 import { printSuccess } from "../output.js";
 import {
   assertChangeName,
@@ -6,44 +10,26 @@ import {
   defaultPath,
   resolveRepoContext,
 } from "../resolve.js";
-import { resolveMergeStatusBackend } from "../ship/backends/gh.js";
-import type { MergeStatusBackend, MergedPullRequest } from "../ship/pr-backend.js";
+import {
+  cleanupMergedChangeBranches,
+  defaultBranchCleanupDeps,
+  type BranchCleanupDeps,
+} from "./branch-cleanup.js";
 import { CliError, type PruneOptions, type PruneResult } from "../types.js";
 
-export interface PruneDeps {
+export type PruneDeps = BranchCleanupDeps & {
   resolveRepo: typeof resolveRepoContext;
   listWorktrees: typeof listWorktrees;
-  branchExists: typeof branchExists;
   defaultBranch: typeof defaultBranch;
   defaultPath: typeof defaultPath;
-  findMergedPr: MergeStatusBackend["findMergedPullRequest"];
-  deleteLocalBranch: (cwd: string, branch: string) => void;
-  deleteRemoteBranch: (cwd: string, remote: string, branch: string) => void;
-  remoteBranchExists: (cwd: string, remote: string, branch: string) => boolean;
-}
+};
 
-const defaultDeps: PruneDeps = {
+const defaultPruneDeps: PruneDeps = {
+  ...defaultBranchCleanupDeps,
   resolveRepo: resolveRepoContext,
   listWorktrees,
-  branchExists,
   defaultBranch,
   defaultPath,
-  findMergedPr: (input) => resolveMergeStatusBackend("gh").findMergedPullRequest(input),
-  deleteLocalBranch(cwd, branch) {
-    // Never -D
-    runGit(["branch", "-d", branch], { cwd });
-  },
-  deleteRemoteBranch(cwd, remote, branch) {
-    runGit(["push", remote, "--delete", branch], { cwd });
-  },
-  remoteBranchExists(cwd, remote, branch) {
-    const res = runGit(["ls-remote", "--heads", remote, branch], {
-      cwd,
-      allowFailure: true,
-    });
-    if (res.status !== 0) return false;
-    return res.stdout.trim().length > 0;
-  },
 };
 
 function worktreeRegistered(
@@ -60,7 +46,7 @@ function worktreeRegistered(
   return false;
 }
 
-export function runPrune(options: PruneOptions, deps: PruneDeps = defaultDeps): PruneResult {
+export function runPrune(options: PruneOptions, deps: PruneDeps = defaultPruneDeps): PruneResult {
   const change = assertChangeName(options.change);
   const ctx = deps.resolveRepo(options.repo);
   const branch = deps.defaultBranch(change, options.branch);
@@ -71,81 +57,35 @@ export function runPrune(options: PruneOptions, deps: PruneDeps = defaultDeps): 
   if (worktreeRegistered(deps, gitCwd, expectedPath, branch)) {
     throw new CliError(
       "worktree_exists",
-      `Worktree still registered for '${change}' (${expectedPath} or branch ${branch}). Run openspec-ops finish first.`,
+      `Worktree still registered for '${change}'. Prefer: openspec-ops finish ${change} ` +
+        `(removes worktree and cleans merged branches). prune is deprecated for primary closeout.`,
       { change, path: expectedPath, branch },
     );
   }
 
-  let merged: MergedPullRequest | null;
-  try {
-    merged = deps.findMergedPr({ cwd: gitCwd, head: branch });
-  } catch (err) {
-    if (err instanceof CliError) throw err;
-    throw new CliError(
-      "pr_failed",
-      err instanceof Error ? err.message : String(err),
-      { branch },
-    );
-  }
+  const cleanup = cleanupMergedChangeBranches(
+    {
+      change,
+      cwd: gitCwd,
+      branch,
+      remote,
+      keepBranch: false,
+      strictPrLookup: true,
+    },
+    deps,
+  );
 
-  if (!merged) {
+  if (!cleanup.mergedPr) {
     throw new CliError(
       "branch_not_merged",
-      `No merged PR found for head branch '${branch}'. Refuse to delete unmerged branches.`,
+      `No merged PR found for head branch '${branch}'. Refuse to delete unmerged branches. ` +
+        `(Deprecated: prefer openspec-ops finish after merge.)`,
       { change, branch },
     );
   }
 
-  const localExists = deps.branchExists(gitCwd, branch);
-  let localDeleted = false;
-  let localAlreadyAbsent = false;
-
-  if (!localExists) {
-    localAlreadyAbsent = true;
-  } else {
-    try {
-      deps.deleteLocalBranch(gitCwd, branch);
-      localDeleted = true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new CliError(
-        "git_failed",
-        `Failed to delete local branch '${branch}' with git branch -d (not using -D). ` +
-          `PR is merged; if this is a squash merge, delete manually with git branch -D only if you intend to. ${msg}`,
-        { change, branch, mergedPr: merged.number },
-      );
-    }
-  }
-
-  const remoteExists = deps.remoteBranchExists(gitCwd, remote, branch);
-  let remoteDeleted = false;
-  let remoteAlreadyAbsent = false;
-
-  if (!remoteExists) {
-    remoteAlreadyAbsent = true;
-  } else {
-    try {
-      deps.deleteRemoteBranch(gitCwd, remote, branch);
-      remoteDeleted = true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new CliError(
-        "git_failed",
-        `Failed to delete remote branch '${remote}/${branch}': ${msg}`,
-        {
-          change,
-          branch,
-          remote,
-          localDeleted,
-          localAlreadyAbsent,
-          mergedPr: merged.number,
-        },
-      );
-    }
-  }
-
   const action: PruneResult["action"] =
-    localAlreadyAbsent && remoteAlreadyAbsent ? "already_clean" : "pruned";
+    cleanup.localAlreadyAbsent && cleanup.remoteAlreadyAbsent ? "already_clean" : "pruned";
 
   const result: PruneResult = {
     action,
@@ -153,24 +93,30 @@ export function runPrune(options: PruneOptions, deps: PruneDeps = defaultDeps): 
     branch,
     remote,
     mergedPr: {
-      number: merged.number,
-      url: merged.url,
-      baseRefName: merged.baseRefName,
+      number: cleanup.mergedPr.number,
+      url: cleanup.mergedPr.url,
+      baseRefName: cleanup.mergedPr.baseRefName,
     },
-    local: { deleted: localDeleted, alreadyAbsent: localAlreadyAbsent },
-    remoteBranch: { deleted: remoteDeleted, alreadyAbsent: remoteAlreadyAbsent },
+    local: {
+      deleted: cleanup.localDeleted,
+      alreadyAbsent: cleanup.localAlreadyAbsent,
+    },
+    remoteBranch: {
+      deleted: cleanup.remoteDeleted,
+      alreadyAbsent: cleanup.remoteAlreadyAbsent,
+    },
   };
 
   printSuccess("prune", result, {
     json: options.json,
     humanLines: [
-      `action:  ${result.action}`,
+      `action:  ${result.action} (deprecated: prefer finish)`,
       `change:  ${result.change}`,
       `branch:  ${result.branch}`,
       `remote:  ${result.remote}`,
-      `pr:      #${merged.number} ${merged.url}`,
-      `local:   ${localDeleted ? "deleted" : localAlreadyAbsent ? "already absent" : "?"}`,
-      `remote:  ${remoteDeleted ? "deleted" : remoteAlreadyAbsent ? "already absent" : "?"}`,
+      `pr:      #${cleanup.mergedPr.number} ${cleanup.mergedPr.url}`,
+      `local:   ${cleanup.localDeleted ? "deleted" : cleanup.localAlreadyAbsent ? "already absent" : "?"}`,
+      `remote:  ${cleanup.remoteDeleted ? "deleted" : cleanup.remoteAlreadyAbsent ? "already absent" : "?"}`,
     ],
   });
 
