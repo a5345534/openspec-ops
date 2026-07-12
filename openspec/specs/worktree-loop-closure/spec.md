@@ -64,20 +64,21 @@ The system SHALL document and, where a harness handoff exists, follow this decis
 ---
 
 ### Requirement: Post-archive finish never commits and never force-cleans dirty trees automatically
-After archive-related settle evaluation, automatic finish MUST NOT run `git commit`, `git merge`, or `git push`.
+After archive, reclaiming a worktree via finish SHALL remain non-committing and MUST NOT auto-pass `--force` for dirty trees. Finish is invoked explicitly by the operator (or via guided next-step choice), not by retired auto-finish policy.
 
-When the worktree is dirty, automatic finish MUST NOT pass `--force`; it MUST surface a message that cleanup was skipped and that the operator may commit/ship or explicitly consent to force-finish.
+Dirty worktrees still require explicit `--force` consent; the system MUST NOT describe this as “auto-finish skipped” as if auto-finish were still the default path.
 
-#### Scenario: dirty worktree skips auto-finish without force
-- **WHEN** post-archive finish evaluation finds a dirty worktree
-- **THEN** `openspec-ops finish` is not invoked with `--force` automatically
-- **AND** the user is informed that auto-finish was skipped
+#### Scenario: dirty worktree requires explicit force for finish
+- **WHEN** a change worktree is dirty after archive
+- **AND** finish is run without `--force`
+- **THEN** finish fails without removing the worktree
+- **AND** messaging does not depend on auto-finish policy env
 
-#### Scenario: finish gate does not ship
-- **WHEN** auto-finish runs or skips
-- **THEN** it does not create a git commit or merge into main as part of that gate
+#### Scenario: finish is not auto-chained from archive
+- **WHEN** archive completes
+- **THEN** finish is not required to run automatically
+- **AND** operators use `/ops-finish` or `/ops-next` to reclaim the worktree
 
----
 
 ### Requirement: Doctor surfaces loop hygiene issues
 Doctor SHOULD report actionable issues that break the worktree loop, including when feasible:
