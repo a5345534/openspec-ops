@@ -94,7 +94,7 @@ export function createGhBackend(): PrBackend {
         input.body || "",
       ];
       if (input.draft) args.push("--draft");
-      args.push("--json", "url,number");
+      // Note: older gh (e.g. 2.45) does not support `pr create --json`
 
       const res = runGh(args, input.cwd);
       if (res.status !== 0) {
@@ -111,21 +111,23 @@ export function createGhBackend(): PrBackend {
           },
         );
       }
-      try {
-        const parsed = JSON.parse(res.stdout.trim()) as {
-          url?: string;
-          number?: number;
-        };
-        if (!parsed.url || typeof parsed.number !== "number") {
-          throw new Error("missing url/number");
-        }
-        return { url: parsed.url, number: parsed.number, alreadyExisted: false };
-      } catch {
-        throw new CliError("pr_failed", "gh pr create returned unparseable JSON", {
+      const url = res.stdout.trim().split(/\s+/).find((t) => t.startsWith("http")) ?? res.stdout.trim();
+      if (!url.startsWith("http")) {
+        // Prefer list lookup for number/url
+        const listed = findExistingPr(input.cwd, input.head);
+        if (listed) return { ...listed, alreadyExisted: false };
+        throw new CliError("pr_failed", "gh pr create did not print a PR URL", {
           backend: "gh",
           stdout: res.stdout.trim(),
         });
       }
+      const numMatch = url.match(/\/pull\/(\d+)/);
+      const number = numMatch ? Number.parseInt(numMatch[1]!, 10) : 0;
+      if (!number) {
+        const listed = findExistingPr(input.cwd, input.head);
+        if (listed) return { ...listed, alreadyExisted: false };
+      }
+      return { url, number: number || 0, alreadyExisted: false };
     },
   };
 }
