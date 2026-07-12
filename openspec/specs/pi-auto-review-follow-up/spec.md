@@ -3,9 +3,7 @@
 ## Purpose
 
 Pi harness gate that opens a new agent turn to run ops-spec-review after propose artifacts are ready, without a mechanical review CLI and without coupling to worktree ensure success.
-
 ## Requirements
-
 ### Requirement: Follow-up turn review gate without mechanical review CLI
 The system SHALL provide a Pi extension path that schedules a **new agent turn** to run the ops-spec-review skill/prompt after propose artifacts are ready.
 
@@ -90,9 +88,18 @@ The extension MUST NOT schedule the follow-up review turn during the propose `in
 
 When a review watch is armed, the extension SHALL re-evaluate readiness on `agent_settled` (or equivalent post-run settle hook).
 
-**v1 readiness:** `openspec/changes/<change>/proposal.md` exists under a resolved project/primary path (and/or active workspace path when known).
+**Readiness (auto-schedule eligibility):** all of:
 
-- If not ready: MUST keep the watch and MUST NOT schedule follow-up review
+1. `openspec/changes/<change>/proposal.md` exists under a resolved project/primary path (and/or active workspace path when known)
+2. The change is still a **pre-apply** auto-review candidate under scanned roots:
+   - MUST NOT be eligible solely because `proposal.md` remains after implementation
+   - If `tasks.md` exists under a change root and contains task checkboxes, and **no** open checkbox (`- [ ]`) remains, the change MUST be treated as **not ready** for auto-review scheduling
+   - If lifecycle phase detection for the change is `archived` or `active_and_archived` under scanned roots, the change MUST be treated as **not ready** for auto-review scheduling
+3. If `tasks.md` is missing, or has no task checkboxes, criterion (2) task rule does not by itself exclude the change (proposal-only mid-propose remains eligible)
+
+Behavior:
+
+- If not ready: MUST keep the watch only when still plausibly pre-apply (e.g. proposal missing); when ineligible because tasks complete or phase non-ok, MUST clear the watch and MUST NOT schedule follow-up review
 - If ready: MUST clear the watch and MUST schedule exactly one follow-up user message that starts ops-spec-review for that change
 
 #### Scenario: Not ready keeps watch
@@ -106,8 +113,15 @@ When a review watch is armed, the extension SHALL re-evaluate readiness on `agen
 - **WHEN** a review watch is armed for `add-dark-mode`
 - **AND** settle runs
 - **AND** `openspec/changes/add-dark-mode/proposal.md` exists
+- **AND** the change is still pre-apply eligible (e.g. no tasks.md, or tasks.md has an open `- [ ]`)
 - **THEN** the extension schedules a follow-up user message to run ops-spec-review for `add-dark-mode`
 - **AND** the watch is cleared so a later settle does not schedule a second review for the same arm
+
+#### Scenario: All tasks complete skips auto-review
+- **WHEN** `openspec/changes/add-dark-mode/proposal.md` exists
+- **AND** `tasks.md` exists with task checkboxes and no open `- [ ]`
+- **AND** settle runs (with or without a prior slash arm)
+- **THEN** the extension does not schedule a follow-up review turn for `add-dark-mode`
 
 #### Scenario: No finish-style CLI review
 - **WHEN** the gate schedules review
@@ -153,17 +167,26 @@ The root README SHALL document:
 ---
 
 ### Requirement: Review watch without requiring slash change name
-The extension SHALL be able to schedule ops-spec-review follow-up for a change when a proposal artifact becomes ready, even if review was not armed from a slash command that included the change name.
+The extension SHALL be able to schedule ops-spec-review follow-up for a change when a proposal artifact becomes ready **and the change is still pre-apply eligible**, even if review was not armed from a slash command that included the change name.
 
-At minimum, on agent settle (or equivalent), the extension MUST consider active changes that have `openspec/changes/<name>/proposal.md` present under resolved roots and MAY arm or fire follow-up review per existing auto-review policy (`OPENSPEC_OPS_AUTO_REVIEW`).
+At minimum, on agent settle (or equivalent), the extension MUST consider active changes that meet auto-review readiness (proposal present and pre-apply eligible) under resolved roots and MAY arm or fire follow-up review per existing auto-review policy (`OPENSPEC_OPS_AUTO_REVIEW`).
+
+Discovery MUST use the same readiness rules as the armed-watch fire path (including skip when tasks are all complete).
 
 One-shot behavior MUST prevent repeatedly scheduling follow-up for the same change after a successful schedule in the same session (or equivalent debounce).
 
 #### Scenario: proposal appears without prior slash name arm
 - **WHEN** review policy is `on`
 - **AND** `openspec/changes/add-dark-mode/proposal.md` exists under a resolved root
+- **AND** the change is pre-apply eligible
 - **AND** no slash-propose arm was recorded for that name
 - **THEN** the extension can schedule a follow-up user message to run ops-spec-review for `add-dark-mode`
+
+#### Scenario: discovery skips applied leftover change
+- **WHEN** review policy is `on`
+- **AND** an active change still has `proposal.md` after tasks are all checked
+- **AND** settle runs
+- **THEN** settle-time discovery does not schedule follow-up review for that change
 
 #### Scenario: auto-review off disables discovery fire
 - **WHEN** `OPENSPEC_OPS_AUTO_REVIEW=off`
@@ -182,3 +205,11 @@ The scheduled follow-up message MUST invoke `/ops-spec-review` so the full itera
 #### Scenario: Follow-up is full review-fix not read-only
 - **WHEN** auto-review schedules ops-spec-review after propose
 - **THEN** the intended skill behavior includes fixing major findings in artifacts when needed within max rounds
+
+### Requirement: Documentation mentions pre-apply eligibility
+The root README auto-review section SHALL note that auto-review requires proposal readiness **and** pre-apply eligibility (e.g. skips when tasks are all complete), not merely leftover `proposal.md` after apply.
+
+#### Scenario: README mentions skip when applied
+- **WHEN** reading the root README auto-review section after this change
+- **THEN** it states that fully checked tasks (or equivalent post-apply signal) suppress auto-schedule
+
