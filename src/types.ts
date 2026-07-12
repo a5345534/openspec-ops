@@ -247,6 +247,7 @@ export interface DoctorIssue {
     | "propose_skill_alignment_markers_missing"
     | "leftover_dirty_worktree"
     | "artifacts_on_primary_only"
+    | "change_location_mismatch"
     | "submodule_detached"
     | "submodule_detached_dirty";
   severity: "error" | "warning" | "info";

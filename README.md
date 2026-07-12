@@ -19,7 +19,7 @@ openspec-ops start / auto-ensure / intercept
         │
 /opsx-propose          plan artifacts in worktree W
         │
-/ops-spec-review       iterative plan/spec review-fix (before apply)
+/ops-spec-review       iterative plan/spec review-fix (before apply; refuses archived phase)
         │
 /opsx-apply            implement in W (extension binds path when name known)
         │
@@ -43,6 +43,9 @@ openspec-ops prune     optional: delete local+remote branch if PR merged (gh);
 - **ensure ≠ cwd** — skills/extension must use `where.path` explicitly ([snippet](docs/snippets/worktree-alignment-block.md)).
 - **Package is pure sidecar** — ships `ops-*` skills only; does not replace project `openspec-*` / `opsx-*`.
 - **Archive-before-merge** is not the default (risk of specs/code split).
+
+**Archive on mainline after merge** when possible. Archiving only on a worktree while leaving `openspec/changes/<name>/` active on primary causes **split-brain** status and invites wrong-phase `/ops-spec-review` (pre-apply). Doctor reports `change_location_mismatch`. `/ops-spec-review` refuses archived-only changes unless you explicitly request historical re-review.
+
 
 ## Submodules (monorepos)
 
@@ -243,7 +246,7 @@ Auto-review follow-up schedules `/ops-spec-review <change>` when `proposal.md` a
 | `merge <change>` | Merge open PR via `gh` (default squash; checks must pass; no chain) |
 | `finish <change>` | Remove worktree; **keeps branch**. Deinits top-level submodules first. Dirty requires `--force` |
 | `prune <change>` | Delete local+remote branch only if merged PR (gh) and no worktree |
-| `doctor` | Read-only health report (stale dirs, submodules, missing paths, …) |
+| `doctor` | Read-only health report (stale dirs, submodules, change_location_mismatch, …) |
 
 Common flags:
 
