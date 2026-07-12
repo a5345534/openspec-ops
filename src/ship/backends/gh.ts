@@ -3,6 +3,8 @@ import { CliError } from "../../types.js";
 import type {
   CreateOrReusePrInput,
   CreateOrReusePrResult,
+  MergedPullRequest,
+  MergeStatusBackend,
   PrBackend,
 } from "../pr-backend.js";
 
@@ -131,6 +133,65 @@ export function createGhBackend(): PrBackend {
 export function resolvePrBackend(id: string): PrBackend {
   if (id === "gh") return createGhBackend();
   throw new CliError("usage", `Unknown PR backend '${id}' (v1 supports: gh)`, {
+    backend: id,
+  });
+}
+
+export function createGhMergeStatusBackend(): MergeStatusBackend {
+  return {
+    id: "gh",
+    findMergedPullRequest(input: { cwd: string; head: string }): MergedPullRequest | null {
+      ensureGhAvailable(input.cwd);
+      const res = runGh(
+        [
+          "pr",
+          "list",
+          "--head",
+          input.head,
+          "--state",
+          "merged",
+          "--json",
+          "number,url,baseRefName,mergedAt",
+          "--limit",
+          "1",
+        ],
+        input.cwd,
+      );
+      if (res.status !== 0) {
+        throw new CliError(
+          "pr_failed",
+          res.stderr.trim() || res.stdout.trim() || "gh pr list (merged) failed",
+          { backend: "gh", status: res.status },
+        );
+      }
+      try {
+        const arr = JSON.parse(res.stdout.trim() || "[]") as Array<{
+          number?: number;
+          url?: string;
+          baseRefName?: string;
+        }>;
+        const first = arr[0];
+        if (first?.url && typeof first.number === "number") {
+          return {
+            number: first.number,
+            url: first.url,
+            baseRefName: first.baseRefName,
+          };
+        }
+      } catch {
+        throw new CliError("pr_failed", "gh pr list returned unparseable JSON", {
+          backend: "gh",
+          stdout: res.stdout.trim(),
+        });
+      }
+      return null;
+    },
+  };
+}
+
+export function resolveMergeStatusBackend(id: string): MergeStatusBackend {
+  if (id === "gh") return createGhMergeStatusBackend();
+  throw new CliError("usage", `Unknown merge-status backend '${id}' (v1 supports: gh)`, {
     backend: id,
   });
 }

@@ -19,4 +19,18 @@ export interface PrBackend {
   createOrReusePullRequest(input: CreateOrReusePrInput): CreateOrReusePrResult;
 }
 
+export interface MergedPullRequest {
+  number: number;
+  url: string;
+  baseRefName?: string;
+}
+
+export interface MergeStatusBackend {
+  id: string;
+  findMergedPullRequest(input: {
+    cwd: string;
+    head: string;
+  }): MergedPullRequest | null;
+}
+
 export type PrBackendFactory = (id: string) => PrBackend;

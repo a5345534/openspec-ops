@@ -30,7 +30,10 @@ review + merge → main
 /opsx-archive          fold specs; default on mainline checkout after merge
         │
 openspec-ops finish    remove worktree when clean (never auto --force if dirty;
-                       never commit/merge)
+                       never commit/merge; keeps branch)
+        │
+openspec-ops prune     optional: delete local+remote branch if PR merged (gh);
+                       refuses if worktree still exists or not merged
 ```
 
 - **ensure ≠ cwd** — skills/extension must use `where.path` explicitly ([snippet](docs/snippets/worktree-alignment-block.md)).
@@ -228,6 +231,7 @@ Auto-review follow-up no longer requires a slash change name: when the Pi extens
 | `where <change>` | Print workspace path (strict: exit 5 if missing); includes `submodules[]` |
 | `ship <change>` | Commit entire worktree, push branch, open/reuse PR via `gh` (no merge/force) |
 | `finish <change>` | Remove worktree; **keeps branch**. Dirty requires `--force` |
+| `prune <change>` | Delete local+remote branch only if merged PR (gh) and no worktree |
 | `doctor` | Read-only health report (stale dirs, submodules, missing paths, …) |
 
 Common flags:
@@ -273,6 +277,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-start` · `ops-start` | `openspec-ops start` |
 | `/ops-where` · `ops-where` | `openspec-ops where` |
 | `/ops-ship` · `ops-ship` | `openspec-ops ship` (commit+push+gh PR; no merge) |
+| `/ops-prune` · `ops-prune` | `openspec-ops prune` (delete branch if PR merged; after finish) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` |
 | `/ops-doctor` · `ops-doctor` | `openspec-ops doctor` |
 | `/ops-review` · `ops-review` | Read & analyze artifacts (agent-driven, no new CLI) |
@@ -288,8 +293,22 @@ Typical loop in Pi:
         │
 /ops-ship <change>       # commit worktree + push + PR (requires gh; no merge)
         │
-merge → /opsx-archive → /ops-finish
+merge → /opsx-archive → /ops-finish → /ops-prune  # prune only if PR merged
 ```
+
+### Prune (merged branch cleanup)
+
+```bash
+openspec-ops prune <change> --json
+```
+
+- Requires **no** registered worktree (run `finish` first).
+- Requires a **merged** PR for head = change branch (`gh pr list --state merged`).
+- Deletes **local** (`git branch -d` only, never `-D`) and **remote** (`git push --delete`).
+- Remote already gone (e.g. GitHub auto-delete head branches) → still success.
+- If squash merge makes `-d` fail: error with guidance; manual `-D` is operator choice.
+- Complementary: GitHub repo setting “Automatically delete head branches” for remotes.
+
 
 Manual workspace entry (advanced): `/ops-start <change>` or CLI `openspec-ops start`.
 

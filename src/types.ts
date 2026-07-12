@@ -1,6 +1,6 @@
 export const SCHEMA_VERSION = 1 as const;
 
-export type CommandName = "start" | "where" | "finish" | "doctor" | "ship";
+export type CommandName = "start" | "where" | "finish" | "doctor" | "ship" | "prune";
 
 export type ErrorCode =
   | "usage"
@@ -20,7 +20,9 @@ export type ErrorCode =
   | "nothing_to_ship"
   | "pr_backend_unavailable"
   | "pr_failed"
-  | "submodule_detached_dirty";
+  | "submodule_detached_dirty"
+  | "worktree_exists"
+  | "branch_not_merged";
 
 export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 10;
 
@@ -68,6 +70,8 @@ export function exitCodeForError(code: ErrorCode): ExitCode {
     case "ambiguous":
     case "submodule_detached_dirty":
     case "nothing_to_ship":
+    case "worktree_exists":
+    case "branch_not_merged":
       return 3;
     case "worktree_dirty":
       return 4;
@@ -124,6 +128,20 @@ export interface ShipOptions extends ChangeOptions {
   /** PR base branch name (e.g. main); default resolved from repo */
   base?: string;
   backend: string;
+}
+
+export interface PruneOptions extends ChangeOptions {
+  remote: string;
+}
+
+export interface PruneResult {
+  action: "pruned" | "already_clean";
+  change: string;
+  branch: string;
+  remote: string;
+  mergedPr: { number: number; url: string; baseRefName?: string };
+  local: { deleted: boolean; alreadyAbsent: boolean };
+  remoteBranch: { deleted: boolean; alreadyAbsent: boolean };
 }
 
 export interface ShipResult {
