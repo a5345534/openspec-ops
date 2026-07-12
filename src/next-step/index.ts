@@ -14,3 +14,7 @@ export {
   summarizeTaskCheckboxes,
   readTasksCheckboxSummary,
 } from "./tasks-checkboxes.js";
+export {
+  listCandidateChanges,
+  formatChangePickList,
+} from "./discover-changes.js";

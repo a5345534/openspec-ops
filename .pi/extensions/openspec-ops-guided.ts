@@ -26,8 +26,10 @@ import {
 import {
   buildNextStepPlan,
   detectLifecycleStation,
+  formatChangePickList,
   formatTextMenu,
   labelsForSelect,
+  listCandidateChanges,
   optionFromSelectLabel,
 } from "../../src/next-step/index.js";
 import { resolveOpsBin, runOps } from "../../src/ops-runtime/run-ops.js";
@@ -184,18 +186,40 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("ops-next", {
     description:
-      "Guided next lifecycle step (select UI or text menu). Never auto-picks.",
+      "Guided next lifecycle step. Optional change name; omit to pick among candidates.",
     handler: async (args, ctx) => {
-      const change = firstKebab(args);
+      const rootsBase = [PACKAGE_ROOT, ctx.cwd].filter(Boolean) as string[];
+      let change = firstKebab(args);
+
       if (!change) {
-        ctx.ui.notify("Usage: /ops-next <kebab-change-name>", "warning");
-        return;
+        const candidates = listCandidateChanges(rootsBase);
+        if (candidates.length === 0) {
+          ctx.ui.notify(
+            "No active changes found. Use /ops-start <change> or open a change worktree, then /ops-next.",
+            "warning",
+          );
+          return;
+        }
+        if (candidates.length === 1) {
+          change = candidates[0]!;
+          ctx.ui.notify(`Using only candidate: ${change}`, "info");
+        } else if (!ctx.hasUI || typeof ctx.ui.select !== "function") {
+          ctx.ui.notify(formatChangePickList(candidates), "info");
+          return;
+        } else {
+          const picked = await ctx.ui.select("Pick change", candidates);
+          if (!picked || !candidates.includes(picked)) {
+            ctx.ui.notify("Stopped. No change selected.", "info");
+            return;
+          }
+          change = picked;
+        }
       }
 
-      const roots = [PACKAGE_ROOT, ctx.cwd].filter(Boolean) as string[];
+      const roots = [...rootsBase];
       let worktreeFound = false;
-      let hasOpenPr = false;
-      let hasMergedPr = false;
+      const hasOpenPr = false;
+      const hasMergedPr = false;
 
       const bin = resolveOpsBin({ projectRoot: PACKAGE_ROOT });
       if (bin) {

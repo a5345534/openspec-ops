@@ -231,7 +231,7 @@ export OPENSPEC_OPS_INTERCEPT_NEW_CHANGE=off
 
 Package.json registers **`openspec-ops-intercept`** only (does **not** replace global `openspec`).
 
-After each lifecycle step, use **`/ops-next <change>`** to pick the next action (UI select or text menu). No auto-review / auto-ensure / auto-finish / auto-impl-review.
+After each lifecycle step, use **`/ops-next [change]` (omit name to pick among candidates)** to pick the next action (UI select or text menu). No auto-review / auto-ensure / auto-finish / auto-impl-review.
 
 ### Commands
 
@@ -309,7 +309,7 @@ Typical loop in Pi:
 /ops-ship <change>       # commit worktree + push + PR (requires gh; no merge)
         │
 /ops-impl-review <change> # post-ship quality (choose via /ops-next)
-/ops-next <change>        # guided next step menu
+/ops-next [change]        # guided next step (omit name → pick change)
         │
 /ops-merge <change>      # only when user asks; checks green
         │
