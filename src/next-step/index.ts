@@ -18,3 +18,4 @@ export {
   listCandidateChanges,
   formatChangePickList,
 } from "./discover-changes.js";
+export { resolvePrSignals, type PrSignals } from "./pr-signals.js";

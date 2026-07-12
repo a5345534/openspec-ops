@@ -31,6 +31,7 @@ import {
   labelsForSelect,
   listCandidateChanges,
   optionFromSelectLabel,
+  resolvePrSignals,
 } from "../../src/next-step/index.js";
 import { resolveOpsBin, runOps } from "../../src/ops-runtime/run-ops.js";
 import { CHANGE_NAME_RE } from "../../src/ops-runtime/change-name.js";
@@ -218,29 +219,44 @@ export default function (pi: ExtensionAPI) {
 
       const roots = [...rootsBase];
       let worktreeFound = false;
-      const hasOpenPr = false;
-      const hasMergedPr = false;
+      let branch = change;
+      let prCwd = ctx.cwd || PACKAGE_ROOT;
 
       const bin = resolveOpsBin({ projectRoot: PACKAGE_ROOT });
       if (bin) {
         const where = runOps(bin, ["where", change], { cwd: ctx.cwd });
         if (where.json?.ok && where.json.result) {
-          worktreeFound = Boolean(where.json.result.found);
-          if (where.json.result.path) {
-            roots.push(String(where.json.result.path));
+          const wr = where.json.result;
+          worktreeFound = Boolean(wr.found);
+          if (wr.path) {
+            roots.push(String(wr.path));
           }
-          if (where.json.result.primaryPath) {
-            roots.push(String(where.json.result.primaryPath));
+          if (wr.primaryPath) {
+            roots.push(String(wr.primaryPath));
+            prCwd = String(wr.primaryPath);
+          } else if (wr.path) {
+            prCwd = String(wr.path);
+          }
+          if (wr.branch) {
+            branch = String(wr.branch);
           }
         }
+      }
+
+      const pr = resolvePrSignals(prCwd, branch);
+      if (pr.queryFailed) {
+        ctx.ui.notify(
+          "PR status unavailable (gh?). Station may stay pre-ship until gh works.",
+          "info",
+        );
       }
 
       const station = detectLifecycleStation({
         change,
         roots: [...new Set(roots)],
         worktreeFound,
-        hasOpenPr,
-        hasMergedPr,
+        hasOpenPr: pr.hasOpenPr,
+        hasMergedPr: pr.hasMergedPr,
       });
       const plan = buildNextStepPlan(change, station);
 
