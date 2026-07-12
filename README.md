@@ -27,7 +27,9 @@ openspec-ops ship      commit entire W + push + gh PR (no merge; not finish)
         │
 /ops-impl-review       post-ship impl quality (fix+test+push; auto default on)
         │
-review + merge → main
+openspec-ops merge     explicit PR merge (squash; checks green; invoke=consent)
+        │
+archive → finish → prune
         │
 /opsx-archive          fold specs; default on mainline checkout after merge
         │
@@ -72,7 +74,9 @@ openspec-ops ship <change>      # commit worktree + push + gh PR (no merge)
         │
 /ops-impl-review <change>       # post-ship: specs/tasks/diff/tests; fix+push
         │
-review + merge → main
+openspec-ops merge <change>     # squash merge when checks green
+        │
+/opsx-archive → finish → prune
         │
 /opsx:archive                   # 原版 OpenSpec
         │
@@ -234,6 +238,7 @@ Auto-review follow-up schedules `/ops-spec-review <change>` when `proposal.md` a
 | `start <change>` | Create or reuse worktree at `<primary>/.worktrees/<change>` on branch `<change>` |
 | `where <change>` | Print workspace path (strict: exit 5 if missing); includes `submodules[]` |
 | `ship <change>` | Commit entire worktree, push branch, open/reuse PR via `gh` (no merge/force) |
+| `merge <change>` | Merge open PR via `gh` (default squash; checks must pass; no chain) |
 | `finish <change>` | Remove worktree; **keeps branch**. Dirty requires `--force` |
 | `prune <change>` | Delete local+remote branch only if merged PR (gh) and no worktree |
 | `doctor` | Read-only health report (stale dirs, submodules, missing paths, …) |
@@ -282,6 +287,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-where` · `ops-where` | `openspec-ops where` |
 | `/ops-ship` · `ops-ship` | `openspec-ops ship` (commit+push+gh PR; no merge) |
 | `/ops-impl-review` · `ops-impl-review` | Post-ship impl review-fix-push (tests; auto after ship default on) |
+| `/ops-merge` · `ops-merge` | Merge PR via `openspec-ops merge` (squash; checks hard gate; only when user asks) |
 | `/ops-prune` · `ops-prune` | `openspec-ops prune` (delete branch if PR merged; after finish) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` |
 | `/ops-doctor` · `ops-doctor` | `openspec-ops doctor` |
@@ -301,7 +307,9 @@ Typical loop in Pi:
         │
 /ops-impl-review <change> # post-ship quality (auto default on)
         │
-merge → /opsx-archive → /ops-finish → /ops-prune  # prune only if PR merged
+/ops-merge <change>      # only when user asks; checks green
+        │
+/opsx-archive → /ops-finish → /ops-prune  # prune only if PR merged
 ```
 
 ### Prune (merged branch cleanup)

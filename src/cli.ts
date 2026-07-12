@@ -1,5 +1,6 @@
 import { runDoctor } from "./commands/doctor.js";
 import { runFinish } from "./commands/finish.js";
+import { parseMergeMethod, runMerge } from "./commands/merge.js";
 import { runPrune } from "./commands/prune.js";
 import { runShip } from "./commands/ship.js";
 import { runStart } from "./commands/start.js";
@@ -19,6 +20,7 @@ Usage:
   openspec-ops where  <change> [--path P] [--branch B] [--json] [--repo PATH]
   openspec-ops finish <change> [--path P] [--branch B] [--force] [--json] [--repo PATH]
   openspec-ops ship   <change> [ship flags] [--json] [--repo PATH]
+  openspec-ops merge  <change> [--method squash|merge|rebase] [--json] [--repo PATH]
   openspec-ops prune  <change> [--remote R] [--branch B] [--json] [--repo PATH]
   openspec-ops doctor [--json] [--repo PATH]
 
@@ -46,6 +48,10 @@ Ship does not merge, archive, or finish the worktree.
 
 Prune deletes local+remote change branches only when a merged PR exists for that head
 and no worktree is registered (run finish first). Never force-deletes unmerged branches.
+
+Merge merges the open PR for the change branch via gh (default --squash).
+Invoking merge is consent (no second confirm). Checks must be green (hard block).
+Does not archive, finish, prune, or delete the head branch.
 `);
 }
 
@@ -234,6 +240,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           path,
           branch,
           remote: flagString(parsed.flags, "remote") ?? "origin",
+        });
+        return 0;
+      }
+      case "merge": {
+        commandName = "merge";
+        runMerge({
+          change: requireChange(parsed.positional),
+          json,
+          repo,
+          path,
+          branch,
+          method: parseMergeMethod(flagString(parsed.flags, "method")),
         });
         return 0;
       }

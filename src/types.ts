@@ -1,6 +1,6 @@
 export const SCHEMA_VERSION = 1 as const;
 
-export type CommandName = "start" | "where" | "finish" | "doctor" | "ship" | "prune";
+export type CommandName = "start" | "where" | "finish" | "doctor" | "ship" | "prune" | "merge";
 
 export type ErrorCode =
   | "usage"
@@ -22,7 +22,9 @@ export type ErrorCode =
   | "pr_failed"
   | "submodule_detached_dirty"
   | "worktree_exists"
-  | "branch_not_merged";
+  | "branch_not_merged"
+  | "checks_failed"
+  | "pr_not_found";
 
 export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 10;
 
@@ -72,6 +74,8 @@ export function exitCodeForError(code: ErrorCode): ExitCode {
     case "nothing_to_ship":
     case "worktree_exists":
     case "branch_not_merged":
+    case "checks_failed":
+    case "pr_not_found":
       return 3;
     case "worktree_dirty":
       return 4;
@@ -132,6 +136,20 @@ export interface ShipOptions extends ChangeOptions {
 
 export interface PruneOptions extends ChangeOptions {
   remote: string;
+}
+
+export type MergeMethod = "squash" | "merge" | "rebase";
+
+export interface MergeOptions extends ChangeOptions {
+  method: MergeMethod;
+}
+
+export interface MergeResult {
+  action: "merged" | "already_merged";
+  change: string;
+  branch: string;
+  method: MergeMethod;
+  pr: { number: number; url: string };
 }
 
 export interface PruneResult {

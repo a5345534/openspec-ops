@@ -52,7 +52,7 @@ openspec-ops ship "<change>" [flags] --json
 
 ### Hard guardrails
 
-- Do **not** merge the PR (`gh pr merge`) unless the user explicitly asks in this turn.
+- Do **not** merge the PR. If the user asks to merge, use `/ops-merge` / `openspec-ops merge` (not raw `gh pr merge` ad hoc).
 - Do **not** use `finish` as a substitute for ship.
 - Do **not** pass git push `--force`.
 - Prefer explicit user consent before ship when the worktree has large/unexpected diffs.
@@ -85,7 +85,7 @@ openspec-ops ship "<change>" [flags] --json
 
 - Ship is not archive and not finish.
 - OpenSpec `/opsx-*` flows remain separate.
-- Never auto-merge.
+- Never auto-merge. To merge, user must explicitly run `/ops-merge` / `openspec-ops merge` (not this skill).
 - Post-ship auto impl-review may edit code and push; users can set `OPENSPEC_OPS_AUTO_IMPL_REVIEW=off`.
 
 ## Fixed phrases

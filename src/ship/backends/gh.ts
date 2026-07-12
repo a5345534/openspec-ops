@@ -195,3 +195,125 @@ export function resolveMergeStatusBackend(id: string): MergeStatusBackend {
     backend: id,
   });
 }
+
+export type OpenPullRequest = { number: number; url: string; state?: string };
+
+/** Open PR for head branch, or null if none. */
+export function findOpenPullRequest(cwd: string, head: string): OpenPullRequest | null {
+  ensureGhAvailable(cwd);
+  const res = runGh(
+    ["pr", "list", "--head", head, "--state", "open", "--json", "number,url,state", "--limit", "1"],
+    cwd,
+  );
+  if (res.status !== 0) {
+    throw new CliError(
+      "pr_failed",
+      res.stderr.trim() || res.stdout.trim() || "gh pr list (open) failed",
+      { backend: "gh", status: res.status },
+    );
+  }
+  try {
+    const arr = JSON.parse(res.stdout.trim() || "[]") as Array<{
+      number?: number;
+      url?: string;
+      state?: string;
+    }>;
+    const first = arr[0];
+    if (first?.url && typeof first.number === "number") {
+      return { number: first.number, url: first.url, state: first.state };
+    }
+  } catch {
+    throw new CliError("pr_failed", "gh pr list (open) returned unparseable JSON", {
+      backend: "gh",
+      stdout: res.stdout.trim(),
+    });
+  }
+  return null;
+}
+
+/**
+ * Evaluate PR checks via `gh pr checks`.
+ * Fail closed: non-zero exit or any non-success state → not passing.
+ * gh pr checks exits 0 when all pass; 1 if any pending/fail (typical).
+ */
+export function assertPullRequestChecksGreen(cwd: string, prNumber: number): void {
+  ensureGhAvailable(cwd);
+  // JSON state per check when supported
+  const jsonRes = runGh(
+    ["pr", "checks", String(prNumber), "--json", "name,state,bucket"],
+    cwd,
+  );
+  if (jsonRes.status === 0 && jsonRes.stdout.trim()) {
+    try {
+      const checks = JSON.parse(jsonRes.stdout.trim() || "[]") as Array<{
+        name?: string;
+        state?: string;
+        bucket?: string;
+      }>;
+      if (!Array.isArray(checks)) {
+        throw new Error("not array");
+      }
+      // Empty checks: treat as fail closed (cannot prove green)
+      if (checks.length === 0) {
+        throw new CliError(
+          "checks_failed",
+          `PR #${prNumber} has no reported checks; refusing to merge (fail closed).`,
+          { pr: prNumber },
+        );
+      }
+      const bad = checks.filter((c) => {
+        const state = (c.state ?? "").toUpperCase();
+        const bucket = (c.bucket ?? "").toLowerCase();
+        // success / pass / skip often ok; pending/fail/cancel block
+        if (bucket === "pass" || bucket === "skipping") return false;
+        if (state === "SUCCESS" || state === "SKIPPED" || state === "NEUTRAL") return false;
+        return true;
+      });
+      if (bad.length > 0) {
+        throw new CliError(
+          "checks_failed",
+          `PR #${prNumber} checks not all successful (${bad.length} incomplete/failed).`,
+          {
+            pr: prNumber,
+            failed: bad.map((c) => c.name ?? c.state).slice(0, 20),
+          },
+        );
+      }
+      return;
+    } catch (err) {
+      if (err instanceof CliError) throw err;
+      // fall through to plain checks
+    }
+  }
+
+  const plain = runGh(["pr", "checks", String(prNumber)], cwd);
+  if (plain.status !== 0) {
+    throw new CliError(
+      "checks_failed",
+      plain.stderr.trim() ||
+        plain.stdout.trim() ||
+        `PR #${prNumber} checks not successful (gh pr checks exit ${plain.status}).`,
+      { pr: prNumber, status: plain.status },
+    );
+  }
+}
+
+export type GhMergeMethod = "squash" | "merge" | "rebase";
+
+export function mergePullRequest(
+  cwd: string,
+  prNumber: number,
+  method: GhMergeMethod,
+): void {
+  ensureGhAvailable(cwd);
+  const flag =
+    method === "squash" ? "--squash" : method === "rebase" ? "--rebase" : "--merge";
+  const res = runGh(["pr", "merge", String(prNumber), flag], cwd);
+  if (res.status !== 0) {
+    throw new CliError(
+      "pr_failed",
+      res.stderr.trim() || res.stdout.trim() || `gh pr merge #${prNumber} failed`,
+      { backend: "gh", pr: prNumber, method, status: res.status },
+    );
+  }
+}

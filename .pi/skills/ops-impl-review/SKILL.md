@@ -54,3 +54,5 @@ Runs **after** `openspec-ops ship` / `/ops-ship` and **before** human merge.
 - Do not expand product scope beyond the change
 - Submodule detached+dirty: treat as major / fix like ship guidance
 - Primary path assumes **post-ship PR**; if no PR, say so and prefer ship first
+
+Merge only via `/ops-merge` when the user explicitly asks; this skill must not merge.
