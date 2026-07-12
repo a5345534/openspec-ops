@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-import { resolveOpsBin } from "../auto-ensure/run-ops.js";
+import { resolveOpsBin } from "../ops-runtime/run-ops.js";
 
 import type { DoctorIssue } from "../types.js";
 

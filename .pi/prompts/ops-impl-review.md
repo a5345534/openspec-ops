@@ -19,4 +19,4 @@ After **ship**, before merge: review implementation vs specs/tasks/diff; run tes
 
 ## Guardrails
 
-- Not CODEOWNERS replacement. Auto after ship: `OPENSPEC_OPS_AUTO_IMPL_REVIEW` (default on).
+- Not CODEOWNERS replacement. Not auto after ship; choose via `/ops-next` or run manually.

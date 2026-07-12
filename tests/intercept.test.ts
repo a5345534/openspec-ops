@@ -39,16 +39,12 @@ describe("parseOpenspecArgv", () => {
 });
 
 describe("parseInterceptNewChangePolicy", () => {
-  it("defaults on", () => {
-    expect(parseInterceptNewChangePolicy(undefined)).toBe("on");
-    expect(parseInterceptNewChangePolicy("")).toBe("on");
-  });
-  it("off", () => {
+  it("always off (ensure-on-intercept removed)", () => {
+    expect(parseInterceptNewChangePolicy(undefined)).toBe("off");
+    expect(parseInterceptNewChangePolicy("")).toBe("off");
     expect(parseInterceptNewChangePolicy("off")).toBe("off");
-    expect(parseInterceptNewChangePolicy("OFF")).toBe("off");
-  });
-  it("unknown as on", () => {
-    expect(parseInterceptNewChangePolicy("ask")).toBe("on");
+    expect(parseInterceptNewChangePolicy("on")).toBe("off");
+    expect(parseInterceptNewChangePolicy("ask")).toBe("off");
   });
 });
 
@@ -79,84 +75,39 @@ describe("resolveRealOpenspec", () => {
 });
 
 describe("runOpenspecIntercept", () => {
-  it("policy off does not ensure", () => {
+  it("forwards new change without ensure (ensure removed)", () => {
     const spawn = vi.fn().mockReturnValue({ status: 0 });
-    const runOpsJson = vi.fn();
     const res = runOpenspecIntercept({
       argv: ["new", "change", "add-x"],
       selfPath: "/shim/openspec-ops-intercept",
       env: {
         PATH: "/usr/bin",
-        OPENSPEC_OPS_INTERCEPT_NEW_CHANGE: "off",
+        OPENSPEC_OPS_INTERCEPT_NEW_CHANGE: "on",
         OPENSPEC_REAL_BIN: "/usr/bin/true",
       },
       resolveReal: () => "/usr/bin/true",
-      resolveOps: () => "/ops/bin",
-      runOpsJson,
       spawn,
       logErr: () => {},
     });
-    expect(runOpsJson).not.toHaveBeenCalled();
     expect(spawn).toHaveBeenCalled();
     expect(res.didEnsure).toBe(false);
     expect(res.exitCode).toBe(0);
   });
 
-  it("policy on ensures then forwards with worktree cwd", () => {
+  it("INTERCEPT=on still does not ensure", () => {
     const spawn = vi.fn().mockReturnValue({ status: 0 });
-    const runOpsJson = vi.fn().mockReturnValue({
-      code: 0,
-      stdout: "",
-      stderr: "",
-      json: {
-        ok: true,
-        result: { path: "/repo/.worktrees/add-x", action: "created" },
-      },
-    });
-    // existsSync for path - may fail if path doesn't exist; use cwd that exists
     const res = runOpenspecIntercept({
       argv: ["new", "change", "add-x"],
       selfPath: "/shim/openspec-ops-intercept",
       cwd: process.cwd(),
-      env: {
-        OPENSPEC_OPS_INTERCEPT_NEW_CHANGE: "on",
-      },
-      resolveReal: () => "/usr/bin/true",
-      resolveOps: () => "/ops/bin",
-      runOpsJson,
-      spawn,
-      logErr: () => {},
-    });
-    expect(runOpsJson).toHaveBeenCalledWith(
-      "/ops/bin",
-      ["start", "add-x"],
-      expect.any(Object),
-    );
-    expect(res.didEnsure).toBe(true);
-    // path may not exist on disk so cwd might stay process.cwd()
-    expect(spawn).toHaveBeenCalled();
-    expect(res.exitCode).toBe(0);
-  });
-
-  it("start failure blocks new change", () => {
-    const spawn = vi.fn();
-    const res = runOpenspecIntercept({
-      argv: ["new", "change", "add-x"],
-      selfPath: "/shim/x",
       env: { OPENSPEC_OPS_INTERCEPT_NEW_CHANGE: "on" },
       resolveReal: () => "/usr/bin/true",
-      resolveOps: () => "/ops/bin",
-      runOpsJson: () => ({
-        code: 3,
-        stdout: "",
-        stderr: "",
-        json: { ok: false, error: { code: "branch_busy", message: "busy" } },
-      }),
       spawn,
       logErr: () => {},
     });
-    expect(spawn).not.toHaveBeenCalled();
-    expect(res.exitCode).toBe(3);
+    expect(res.didEnsure).toBe(false);
+    expect(spawn).toHaveBeenCalled();
+    expect(res.exitCode).toBe(0);
   });
 
   it("passthrough list without ensure", () => {

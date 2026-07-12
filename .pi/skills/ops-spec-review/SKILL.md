@@ -32,7 +32,7 @@ Runs **after** `/opsx-propose` and **before** `/opsx-apply` only.
 
 Optional soft warn: if all tasks are `[x]` and context says already shipped/applied, warn and prefer stop unless user insists.
 
-Auto-review (`OPENSPEC_OPS_AUTO_REVIEW`) only arms after **propose** — never because of archive/ship.
+Auto-review is **removed**. Run this skill manually or choose it via `/ops-next`.
 
 ## Behavior: review → fix → re-review
 
@@ -104,4 +104,4 @@ Verdict: ready for apply | needs human | phase_mismatch
 - Do **not** implement application code as part of this skill.
 - Do **not** merge, ship, finish, or archive.
 - Do **not** re-run full fix loops on archived changes without override.
-- Auto-review follow-up uses this skill after **propose only**; users may set `OPENSPEC_OPS_AUTO_REVIEW=off`.
+- Prefer `/ops-next` after propose to choose spec-review; no automatic follow-up turn.
