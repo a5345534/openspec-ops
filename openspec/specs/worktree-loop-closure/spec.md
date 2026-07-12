@@ -98,3 +98,13 @@ This capability MUST NOT implement automated `git commit`, `git push`, pull requ
 #### Scenario: no ship subcommand required here
 - **WHEN** this capability is implemented
 - **THEN** success does not require an `openspec-ops ship` command to exist
+
+---
+
+### Requirement: Documented loop includes ship before merge
+The recommended delivery loop documentation SHALL include an explicit **ship** (commit + push + PR) step after apply and before merge/archive/finish.
+
+#### Scenario: README mentions ship before merge
+- **WHEN** reading the recommended loop documentation after this change
+- **THEN** ship or commit/PR via openspec-ops ship appears after apply and before merge
+

@@ -96,3 +96,14 @@ This capability MUST NOT implement automatic `git switch -c` (or equivalent) ins
 #### Scenario: start without submodule mutation flag
 - **WHEN** `openspec-ops start` runs without a future opt-in submodule-branch flag
 - **THEN** success does not require creating branches inside submodules
+
+---
+
+### Requirement: Ship respects detached-dirty submodule preflight
+When ship runs against a change worktree, it SHALL use top-level submodule probe results and MUST abort if any top-level submodule is detached and dirty, consistent with not committing ambiguous parent state.
+
+#### Scenario: ship aborts on detached dirty submodule
+- **WHEN** ship is invoked
+- **AND** a top-level submodule under the worktree is detached and dirty
+- **THEN** ship does not complete a successful parent commit+PR for that invocation
+
