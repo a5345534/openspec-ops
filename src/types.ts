@@ -119,6 +119,8 @@ export interface ChangeOptions extends GlobalOptions {
 
 export interface StartOptions extends ChangeOptions {
   base?: string;
+  /** Opt-in: create/switch named branch in detached top-level submodules */
+  initSubmoduleBranches?: boolean;
 }
 
 export interface FinishOptions extends ChangeOptions {
@@ -197,6 +199,13 @@ export interface StartResult {
   primaryPath: string;
   changeDirExists: boolean;
   warnings: Array<{ code: string; message: string }>;
+  /** Present when --init-submodule-branches used; empty if none/off */
+  submoduleBranches: Array<{
+    path: string;
+    branch: string;
+    action: "created" | "switched" | "skipped" | "failed";
+    message?: string;
+  }>;
 }
 
 /** Top-level submodule state under a change worktree (read-only probe). */

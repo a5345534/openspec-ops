@@ -237,7 +237,7 @@ After each lifecycle step, use **`/ops-next <change>`** to pick the next action 
 
 | Command | Purpose |
 |---|---|
-| `start <change>` | Create or reuse worktree at `<primary>/.worktrees/<change>` on branch `<change>` |
+| `start <change> [--init-submodule-branches]` | Create or reuse worktree at `<primary>/.worktrees/<change>` on branch `<change>` |
 | `where <change>` | Print workspace path (strict: exit 5 if missing); includes `submodules[]` |
 | `ship <change>` | Commit entire worktree, push branch, open/reuse PR via `gh` (no merge/force) |
 | `merge <change>` | Merge open PR via `gh` (default squash; non-empty checks must pass; empty checks allowed by default; no chain) |
