@@ -108,7 +108,7 @@ Failure:
 
    | Condition | What to do |
    |---|---|
-   | exit 0 | Report removed; emphasize branch kept (`branchDeleted: false`) |
+   | exit 0 | Report action (`removed` / `removed_and_pruned` / …); note whether branch was kept or deleted |
    | exit 4 `worktree_dirty` | Explain; ask about `--force`; do not retry with force unprompted |
    | exit 5 `not_found` | Nothing to finish |
    | exit 3/2/10 | Shared table |
@@ -116,22 +116,23 @@ Failure:
 7. Success report:
 
    ```text
-   Worktree removed
+   action:  removed | removed_and_pruned | pruned_only | already_clean
    change:  <change>
-   path:    <path>
-   branch:  <branch> (kept)
+   path:    <path or none>
+   branch:  <branch> (kept if not merged / --keep-branch; may be deleted if PR merged)
    forced:  <true|false>
    ```
 
    Optional notes:
 
-   - Delete branch manually later if desired (not done by this tool).
+   - If PR is merged and `--keep-branch` was not set, local+remote branch may be deleted.
    - Archive remains `/opsx-archive` on the appropriate checkout.
 
 ## Guardrails
 
 - Never imply specs were archived.
-- Never delete branch, remote, or PR.
+- Do not delete unmerged branches; merged cleanup is finish's job unless `--keep-branch`.
+- Do not merge or archive as part of finish.
 - Never pass `--force` because “it would be convenient”.
 - Do not run `git worktree remove` yourself.
 

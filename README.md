@@ -189,7 +189,7 @@ Project checkout of this monorepo still has local files for development; **Pi pa
 openspec-ops does **not** override your `openspec-propose` skill. Alignment uses:
 
 1. **Pi extension** — after ensure, REQUIRED write path = worktree
-2. **Opt-in intercept** — `openspec-ops-intercept` on `openspec new change`
+2. **Opt-in intercept** — `openspec-ops-intercept` (forward-only; no ensure)
 3. **Optional snippet** — paste into *your* propose skill: [`docs/snippets/worktree-alignment-block.md`](docs/snippets/worktree-alignment-block.md)
 
 Rules when using the snippet / orchestration:
@@ -205,7 +205,7 @@ See also GitHub issue [#1](https://github.com/a5345534/openspec-ops/issues/1).
 
 ### OpenSpec CLI intercept (`openspec-ops-intercept`)
 
-Agents usually run `openspec new change <name>` after `/opsx-propose` **without** a name on the slash line. This package ships an **opt-in** wrapper that intercepts that CLI call **before** the change directory is created:
+Optional **forward-only** wrapper around stock `openspec` (does **not** auto-ensure worktrees). Prefer explicit `/ops-start` before propose. Historical ensure-before-new-change behavior was removed:
 
 1. `openspec-ops start <name>` (ensure worktree)
 2. Run the **real** OpenSpec binary with cwd set to the worktree (when known)

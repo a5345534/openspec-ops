@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -47,4 +47,15 @@ describe("package ops-only Pi surface", () => {
     const files = pkg.files ?? [];
     expect(files.includes(".pi")).toBe(false);
   });
+
+  it("files list includes ops-next skill", () => {
+    const pkg = loadPkg();
+    const files = pkg.files ?? [];
+    expect(files.some((f) => f.includes("ops-next"))).toBe(true);
+  });
+
+  it("clean build does not leave dist/auto-ensure", () => {
+    expect(existsSync(resolve(process.cwd(), "dist/auto-ensure"))).toBe(false);
+  });
+
 });

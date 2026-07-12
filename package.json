@@ -39,7 +39,8 @@
     ".pi/skills/ops-impl-review",
     ".pi/prompts/ops-impl-review.md",
     ".pi/skills/ops-merge",
-    ".pi/prompts/ops-merge.md"
+    ".pi/prompts/ops-merge.md",
+    ".pi/skills/ops-next"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -47,7 +48,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "openspec-ops": "tsx src/cli.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prebuild": "rm -rf dist"
   },
   "engines": {
     "node": ">=20"
