@@ -116,3 +116,11 @@ Project documentation for finish/closeout SHALL note that change worktrees may c
 #### Scenario: README or finish help mentions submodule teardown
 - **WHEN** reading finish or submodule closeout documentation after this change
 - **THEN** it mentions submodule-aware finish or deinit-before-remove behavior
+
+### Requirement: Opt-in start path avoids long-lived detached submodule work
+Documentation for submodule hygiene SHALL mention that operators MAY pass `--init-submodule-branches` on start so checked-out detached top-level submodules get a named branch matching the change before implementation, without auto-commit.
+
+#### Scenario: hygiene docs mention the flag
+- **WHEN** reading submodule hygiene or ops-start docs after this change
+- **THEN** the opt-in start flag for submodule branches is described
+
