@@ -381,3 +381,12 @@ The finish command’s worktree removal path SHALL attempt to unload initialized
 - **WHEN** a clean change worktree contains an initialized top-level submodule
 - **AND** finish is run without prior manual submodule deinit
 - **THEN** finish still completes worktree removal on the happy path
+
+---
+
+### Requirement: Doctor can flag change location mismatch
+Doctor issue taxonomy SHALL include the stable id **`change_location_mismatch`** for active-vs-archived change location mismatch.
+
+#### Scenario: issue id is stable
+- **WHEN** doctor reports the split-brain condition
+- **THEN** the issue id is `change_location_mismatch`
