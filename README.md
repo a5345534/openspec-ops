@@ -15,7 +15,7 @@ OpenSpec 操作自动化层（旁路增强，不修改 OpenSpec 本体）。
 Default order (OpenSpec team-compatible; **merge before archive**):
 
 ```text
-openspec-ops start / auto-ensure / intercept
+openspec-ops start     # explicit only (no auto-ensure)
         │
 /opsx-propose          plan artifacts in worktree W
         │
@@ -25,7 +25,7 @@ openspec-ops start / auto-ensure / intercept
         │
 openspec-ops ship      commit entire W + push + gh PR (no merge; not finish)
         │
-/ops-impl-review       post-ship impl quality (fix+test+push; auto default on)
+/ops-impl-review       post-ship impl quality (fix+test+push; manual or /ops-next)
         │
 openspec-ops merge     explicit PR merge (squash; checks green or empty; invoke=consent)
         │
@@ -196,8 +196,8 @@ Rules when using the snippet / orchestration:
 
 - After the change name is known: `openspec-ops where` / `start`
 - Use `result.path` as cwd for `openspec` and `openspec/changes/<name>/` writes
-- **Fail-closed** when `openspec-ops` is resolvable and `OPENSPEC_OPS_AUTO_START` is not `off` and where/start fails
-- **`OPENSPEC_OPS_AUTO_START=off`** (or ops missing): primary allowed **with warning**
+- Worktree creation is **explicit** (`/ops-start`); propose does not auto-ensure
+- Prefer writing change artifacts in the worktree after start
 
 `openspec-ops doctor --json` can hint if your **project** propose skill lacks the optional marker block (not the package tree).
 
@@ -231,7 +231,7 @@ export OPENSPEC_OPS_INTERCEPT_NEW_CHANGE=off
 
 Package.json registers **`openspec-ops-intercept`** only (does **not** replace global `openspec`).
 
-Auto-review follow-up schedules `/ops-spec-review <change>` when propose artifacts are ready **and** the change is still pre-apply eligible (has `proposal.md`; skips when `tasks.md` checkboxes are all complete or the change is archived). Full review-fix loop; set OPENSPEC_OPS_AUTO_REVIEW=off to skip.
+After each lifecycle step, use **`/ops-next <change>`** to pick the next action (UI select or text menu). No auto-review / auto-ensure / auto-finish / auto-impl-review.
 
 ### Commands
 
@@ -299,7 +299,8 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 Typical loop in Pi:
 
 ```text
-/opsx-propose <change>   # harness may auto-ensure worktree first (see below)
+/ops-start <change>      # when you want a worktree (explicit)
+/opsx-propose <change>   # no auto-ensure
         │
 /ops-spec-review <change>  # iterative plan/spec review-fix
         │
@@ -307,7 +308,8 @@ Typical loop in Pi:
         │
 /ops-ship <change>       # commit worktree + push + PR (requires gh; no merge)
         │
-/ops-impl-review <change> # post-ship quality (auto default on)
+/ops-impl-review <change> # post-ship quality (choose via /ops-next)
+/ops-next <change>        # guided next step menu
         │
 /ops-merge <change>      # only when user asks; checks green
         │
@@ -333,7 +335,7 @@ Manual workspace entry (advanced): `/ops-start <change>` or CLI `openspec-ops st
 Requirements for the agent / extension:
 
 - `openspec-ops` on `PATH`, or set `OPENSPEC_OPS_BIN` to the binary
-- Skills/prompts and the auto-ensure extension always call `openspec-ops … --json` (`schemaVersion: 1`)
+- Skills/prompts and the Pi extension call `openspec-ops … --json` (`schemaVersion: 1`)
 
 **Full-text self-contained:** each of the 5 skills and 5 prompts embeds the full runtime rules (not short forwarders). When CLI contract text changes, update all relevant files together.
 
@@ -359,129 +361,20 @@ Precedence: **session > env > default**.
 
 ### Auto impl-review after ship
 
-Default **on** (`OPENSPEC_OPS_AUTO_IMPL_REVIEW`). After successful ship, agent runs `/ops-impl-review` (may edit code, test, push). Set `off` to skip. Does **not** merge.
+After ship, use `/ops-next` to choose impl-review / re-ship / merge. Impl-review is **not** auto-started. Does **not** merge.
 
 
-## Pi extension: auto-ensure + auto-review + auto-finish
+## Pi extension: guided lifecycle
 
-Project extension: `.pi/extensions/openspec-ops-auto-ensure.ts`
+Extension: `.pi/extensions/openspec-ops-auto-ensure.ts` (name historical).
 
-The extension provides harness gates (CLI side effects; OpenSpec prompts unchanged):
+- **`/ops-start`** — manual worktree only  
+- **`/ops-next <change>`** — hard-coded next-step menu (`ctx.ui.select` or text; never auto-picks)  
+- **`/ops-config`** — session max-rounds for reviews  
 
-### Auto-ensure (before propose)
+**Removed:** auto-ensure on propose, auto-review settle fire, auto-finish, auto-impl-review after ship, intercept ensure-before-new-change.
 
-When you type `/opsx-propose <kebab-change>` (or `/opsx:propose …`):
-
-1. Detects propose intent (slash strong signal only)
-2. Ensures a worktree via `openspec-ops where` / `start --json` (idempotent)
-3. **Releases** the original input so stock `/opsx-propose` expands unchanged
-
-| `OPENSPEC_OPS_AUTO_START` | Behavior |
-|---|---|
-| `on` (default) | Silent ensure before propose |
-| `ask` | Confirm only if worktree is missing |
-| `off` | No ensure; native OpenSpec only |
-
-```bash
-# disable auto-ensure
-export OPENSPEC_OPS_AUTO_START=off
-```
-
-### Auto-review (follow-up turn after propose)
-
-Schedules a **new agent turn** to run **ops-spec-review** (full review→fix→re-review loop) when propose artifacts are ready—not a mechanical review CLI. Can be multi-round; disable with OPENSPEC_OPS_AUTO_REVIEW=off.
-
-1. **Watch arm** (v1): `/opsx-propose <kebab-name>` (or `/opsx:propose …`) with parseable name and policy `on` → sticky review watch (**independent of ensure success**; still arms when `AUTO_START=off` / ensure skipped)
-2. **Ensure hard-abort** (missing bin / conflict `handled`): clears that review watch (no zombie)
-3. **Check points**: each `agent_settled` while review watches exist
-4. **Readiness:** `proposal.md` exists **and** pre-apply eligible — not all `tasks.md` checkboxes complete; not archived / split-brain under scanned roots
-5. When ready → clear watch → `sendUserMessage("/ops-spec-review <change>", { deliverAs: "followUp" })` → new turn runs iterative fix loop
-6. When not ready → keep watch (multi-turn propose safe)
-
-| `OPENSPEC_OPS_AUTO_REVIEW` | Behavior |
-|---|---|
-| `on` (default) | Arm on slash-propose + follow-up `/ops-spec-review` when ready (full fix loop) |
-| `off` | No arm; use `/ops-spec-review <change>` manually |
-
-```bash
-export OPENSPEC_OPS_AUTO_REVIEW=off
-```
-
-- Review body is **ops-spec-review** (LLM, iterative). No `openspec-ops review` CLI.
-- Max rounds: `/ops-config set spec-review.max-rounds N` or env `OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS` (default 3; session > env > default).
-- v1 requires kebab change name on the propose slash to arm (skill-path propose is not detected).
-
-### Auto-finish (orphan worktree reclaim)
-
-User language: "after archive, clean up the worktree."  
-Technical: **reclaim orphan worktrees when a watched change is no longer active** — not when `/opsx-archive` is merely typed.
-
-1. **Watch arm** (v1): `/opsx-archive <kebab-name>` (or `/opsx:archive …`) with a parseable name and policy not `off` → sticky watch (optional: skip arm if `where` already not_found). **Never** runs `finish` on input. Archive input is always released (fail-open).
-2. **Check points**: each `agent_settled` while watches exist → `openspec-ops where --json`
-3. **Orphan hard conditions** (all required before finish):
-   - worktree still exists
-   - `dirty === false`
-   - `changeDirExists === false` (change no longer active)
-4. While change still active → keep watch, no finish (multi-turn archive safe)
-5. When orphan + clean → policy path; **never** `--force`
-
-| `OPENSPEC_OPS_AUTO_FINISH` | Behavior |
-|---|---|
-| `ask` (default) | Confirm, then `openspec-ops finish` (no UI → skip, no silent finish) |
-| `on` | Finish without confirm when orphan hard conditions hold |
-| `off` | No watch / no reclaim |
-
-```bash
-export OPENSPEC_OPS_AUTO_FINISH=off   # disable
-export OPENSPEC_OPS_AUTO_FINISH=on    # aggressive clean reclaim
-
-### Merge empty checks
-
-| `OPENSPEC_OPS_MERGE_EMPTY_CHECKS` | Behavior |
-|---|---|
-| unset / `allow` (default) | Zero reported checks → allow merge |
-| `refuse` / `strict` / `fail` / `off` | Zero checks → `checks_failed` |
-
-Pending or failing checks always block, regardless of this setting.
-
-```
-
-- Finish keeps the **branch**; it is **not** OpenSpec archive.
-- Manual fallback (any harness): `/ops-finish` or `openspec-ops finish` — skills are not the Pi automation main path.
-- Dirty orphan: notify and clear watch; use manual finish if you need `--force` with consent.
-- v1 requires kebab change name on the archive slash to arm a watch.
-
-### Error handling
-
-- If ensure fails (e.g. `branch_busy`), propose does **not** continue; the error code is shown.
-- Archive path is **fail-open**: missing CLI / finish errors never cancel archive.
-- Auto-review fires at most once per arm (watch cleared when follow-up is scheduled).
-- If `proposal.md` never appears, the review watch stays until policy off or a later ready settle; ensure abort clears the watch.
-- If tasks become all complete (or phase is archived), the watch is cleared and auto-review does **not** schedule (manual `/ops-spec-review` still available).
-
-Reload Pi after pulling (`/reload`) so the extension is picked up from `.pi/extensions/`.
-
-## Working principles
-
-1. **兼容优先**：原版 OpenSpec 流程不被破坏
-2. **旁路增强**：自动化能力以外挂方式提供
-3. **小步验证**：先做 worktree 相关的最小可用自动化，再扩展
-4. **可丢弃假设**：在证据不足前，不把临时设计写成硬契约
-5. **独立演进**：本仓库自洽说明自身目标与边界
-
-## Status
-
-- Pi package ops-only surface: archived `package-ops-only-surface`
-
-- Worktree write alignment (issue #1): archived `align-propose-writes-with-worktree`
-
-- OpenSpec CLI intercept (`openspec-ops-intercept`): archived `intercept-openspec-new-change`
-
-- Phase 0 CLI: archived `add-workspace-lifecycle-cli`
-- Pi ops skills/prompts: archived `add-pi-ops-skills`
-- Auto-ensure on propose: archived `add-pi-auto-ensure-on-propose`
-- Auto-finish on archive (orphan reclaim): archived `add-pi-auto-finish-on-archive`
-- Auto-review follow-up turn: archived `rebind-auto-review-follow-up-turn`
+Stations (main menu): `no_workspace`→start; `proposed`→spec-review|apply; `applied`→ship; `shipped`→impl-review|ship|merge; `merged`→archive; `archived`→finish.
 
 ## License
 

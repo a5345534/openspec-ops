@@ -146,6 +146,10 @@ After removing the worktree (if any):
 - No worktree + merged → branch-only cleanup still OK
 - Prefer `finish` over deprecated `prune`
 
+## After finish
+
+Offer `/ops-next` only if useful; usually station is done.
+
 ## Guardrails
 
 - Never imply specs were archived.

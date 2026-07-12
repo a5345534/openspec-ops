@@ -1,4 +1,4 @@
-import { CHANGE_NAME_RE } from "../auto-ensure/parse.js";
+import { CHANGE_NAME_RE } from "../ops-runtime/change-name.js";
 
 export type NewChangeIntercept =
   | { kind: "new_change"; name: string }

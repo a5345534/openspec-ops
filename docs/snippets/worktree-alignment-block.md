@@ -22,10 +22,10 @@ Once kebab-case change name `<name>` is known:
    ```bash
    openspec-ops where "<name>" --json || openspec-ops start "<name>" --json
    ```
-2. **Alignment required** when `openspec-ops` is resolvable AND `OPENSPEC_OPS_AUTO_START` is not `off`:
+2. **Alignment required** when `openspec-ops` is resolvable AND `manual /ops-start` is not `off`:
    - On where/start hard failure: **STOP** and report the error. Do **not** treat primary-only scaffold as success.
    - On success: use `result.path` as **cwd** for ALL subsequent `openspec` CLI invocations and for creating/editing files under `openspec/changes/<name>/`.
-3. **Alignment not required** when `OPENSPEC_OPS_AUTO_START=off` OR `openspec-ops` cannot be resolved:
+3. **Alignment not required** when `manual /ops-start=off` OR `openspec-ops` cannot be resolved:
    - You MAY continue using the current directory, but MUST warn that worktree alignment is skipped.
 
 Tip: `alias openspec=openspec-ops-intercept` with `OPENSPEC_REAL_BIN` set so `openspec new change` ensures before scaffold.

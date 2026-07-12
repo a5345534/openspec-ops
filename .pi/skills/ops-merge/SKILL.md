@@ -37,7 +37,7 @@ Require `schemaVersion === 1`.
 3. On `checks_failed`: report; do not bypass. Pending/fail always block.
    Empty checks: allowed by default; only block if `OPENSPEC_OPS_MERGE_EMPTY_CHECKS=refuse`.
 4. On `pr_not_found`: ship first or fix branch name.
-5. On success / `already_merged`: report PR; **next** (do not auto-run): `/opsx-archive` → finish → prune.
+5. On success / `already_merged`: report PR; offer `/ops-next <change>` (archive | stop). Do not auto-run archive/finish.
 
 ## Guardrails
 
