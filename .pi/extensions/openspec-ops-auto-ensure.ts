@@ -61,7 +61,7 @@ import {
 import {
   buildOpsReviewFollowUpMessage,
   discoverReadyProposalChanges,
-  isProposalReady,
+  isAutoReviewEligible,
   parseAutoReviewPolicy,
   selectReviewFollowUps,
 } from "../../src/auto-review/index.js";
@@ -362,12 +362,19 @@ export default function (pi: ExtensionAPI) {
         );
         const uniqueRoots = [...new Set(roots.map((r) => resolve(r)))];
 
+        // Clear watches that are no longer pre-apply eligible (e.g. all tasks done)
+        for (const w of [...reviewWatches]) {
+          if (!isAutoReviewEligible(w, uniqueRoots)) {
+            reviewWatches.delete(w);
+          }
+        }
+
         const candidates = new Set<string>([
           ...reviewWatches,
           ...discoverReadyProposalChanges(uniqueRoots),
         ]);
-        const ready = [...candidates].filter(
-          (c) => isProposalReady(c, uniqueRoots),
+        const ready = [...candidates].filter((c) =>
+          isAutoReviewEligible(c, uniqueRoots),
         );
         const toFire = selectReviewFollowUps(ready, reviewScheduled);
 

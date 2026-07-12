@@ -231,7 +231,7 @@ export OPENSPEC_OPS_INTERCEPT_NEW_CHANGE=off
 
 Package.json registers **`openspec-ops-intercept`** only (does **not** replace global `openspec`).
 
-Auto-review follow-up schedules `/ops-spec-review <change>` when `proposal.md` appears (full review-fix loop, may edit artifacts; set OPENSPEC_OPS_AUTO_REVIEW=off to skip).
+Auto-review follow-up schedules `/ops-spec-review <change>` when propose artifacts are ready **and** the change is still pre-apply eligible (has `proposal.md`; skips when `tasks.md` checkboxes are all complete or the change is archived). Full review-fix loop; set OPENSPEC_OPS_AUTO_REVIEW=off to skip.
 
 ### Commands
 
@@ -394,7 +394,7 @@ Schedules a **new agent turn** to run **ops-spec-review** (full review→fix→r
 1. **Watch arm** (v1): `/opsx-propose <kebab-name>` (or `/opsx:propose …`) with parseable name and policy `on` → sticky review watch (**independent of ensure success**; still arms when `AUTO_START=off` / ensure skipped)
 2. **Ensure hard-abort** (missing bin / conflict `handled`): clears that review watch (no zombie)
 3. **Check points**: each `agent_settled` while review watches exist
-4. **Readiness (v1):** `openspec/changes/<change>/proposal.md` exists (project root, cwd, and/or active workspace path)
+4. **Readiness:** `proposal.md` exists **and** pre-apply eligible — not all `tasks.md` checkboxes complete; not archived / split-brain under scanned roots
 5. When ready → clear watch → `sendUserMessage("/ops-spec-review <change>", { deliverAs: "followUp" })` → new turn runs iterative fix loop
 6. When not ready → keep watch (multi-turn propose safe)
 
@@ -457,6 +457,7 @@ Pending or failing checks always block, regardless of this setting.
 - Archive path is **fail-open**: missing CLI / finish errors never cancel archive.
 - Auto-review fires at most once per arm (watch cleared when follow-up is scheduled).
 - If `proposal.md` never appears, the review watch stays until policy off or a later ready settle; ensure abort clears the watch.
+- If tasks become all complete (or phase is archived), the watch is cleared and auto-review does **not** schedule (manual `/ops-spec-review` still available).
 
 Reload Pi after pulling (`/reload`) so the extension is picked up from `.pi/extensions/`.
 
