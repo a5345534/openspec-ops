@@ -57,7 +57,7 @@ export function resolveOpsBin(options: {
   // Last resort: npm global bin next to this package when linked
   try {
     const here = resolve(fileURLToPath(import.meta.url), "..");
-    // src/auto-ensure or dist/auto-ensure → package root
+    // src/ops-runtime or dist/ops-runtime → package root
     const candidates = [
       resolve(here, "../../bin/openspec-ops"),
       resolve(here, "../bin/openspec-ops"),

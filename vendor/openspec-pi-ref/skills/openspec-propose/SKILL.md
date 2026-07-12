@@ -46,10 +46,10 @@ When ready to implement, run /opsx-apply
       ```bash
       openspec-ops where "<name>" --json || openspec-ops start "<name>" --json
       ```
-   2. **Alignment required** when `openspec-ops` is resolvable AND `OPENSPEC_OPS_AUTO_START` is not `off`:
+   2. **Alignment required** when `openspec-ops` is resolvable AND a change worktree is in use (after explicit `/ops-start` or where found):
       - On where/start hard failure: **STOP** and report the error. Do **not** treat primary-only scaffold as success.
       - On success: use `result.path` as **cwd** for ALL subsequent `openspec` CLI invocations and for creating/editing files under `openspec/changes/<name>/`.
-   3. **Alignment not required** when `OPENSPEC_OPS_AUTO_START=off` OR `openspec-ops` cannot be resolved:
+   3. **Alignment not required** when no change worktree exists OR `openspec-ops` cannot be resolved:
       - You MAY continue using the current directory, but MUST warn that worktree alignment is skipped.
 
    Tip: put `openspec-ops-intercept` on PATH (with `OPENSPEC_REAL_BIN`) so `openspec new change` ensures before scaffold.

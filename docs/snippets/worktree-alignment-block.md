@@ -7,14 +7,14 @@ block below into **your project's** propose skill or prompt (after
 
 Also consider:
 
-- Pi extension hard path inject after ensure
-- Opt-in: `alias openspec=openspec-ops-intercept` + `OPENSPEC_REAL_BIN`
+- Pi extension hard path inject after **explicit** `/ops-start`
+- Optional: `alias openspec=openspec-ops-intercept` + `OPENSPEC_REAL_BIN` (forward-only; does not auto-ensure)
 
 ```markdown
 <!-- openspec-ops:worktree-alignment BEGIN -->
 ## openspec-ops worktree alignment
 
-**ensure/start does NOT switch process cwd.** Bind cwd to the worktree path explicitly.
+**start does NOT switch process cwd.** Bind cwd to the worktree path explicitly.
 
 Once kebab-case change name `<name>` is known:
 
@@ -22,15 +22,15 @@ Once kebab-case change name `<name>` is known:
    ```bash
    openspec-ops where "<name>" --json || openspec-ops start "<name>" --json
    ```
-2. **Alignment required** when `openspec-ops` is resolvable AND `manual /ops-start` is not `off`:
+2. **Alignment required** when `openspec-ops` is resolvable AND a change worktree is in use (after start or where found):
    - On where/start hard failure: **STOP** and report the error. Do **not** treat primary-only scaffold as success.
    - On success: use `result.path` as **cwd** for ALL subsequent `openspec` CLI invocations and for creating/editing files under `openspec/changes/<name>/`.
-3. **Alignment not required** when `manual /ops-start=off` OR `openspec-ops` cannot be resolved:
+3. **Alignment not required** when no change worktree exists OR `openspec-ops` cannot be resolved:
    - You MAY continue using the current directory, but MUST warn that worktree alignment is skipped.
 
-Tip: `alias openspec=openspec-ops-intercept` with `OPENSPEC_REAL_BIN` set so `openspec new change` ensures before scaffold.
+There is **no** `OPENSPEC_OPS_AUTO_START` switch. Use explicit start + `/ops-next` for lifecycle.
 
-**Submodules:** Path alignment does **not** create feature branches inside git submodules. If `.gitmodules` exists, check `result.submodules` from `where` — do not leave long-lived work on detached submodule HEAD (branch + commit in submodule, then parent gitlink).
+**Submodules:** Path alignment does **not** create feature branches inside git submodules unless you pass `start --init-submodule-branches`. Check `result.submodules` from `where` — do not leave long-lived work on detached submodule HEAD.
 <!-- openspec-ops:worktree-alignment END -->
 ```
 
@@ -40,15 +40,8 @@ Tip: `alias openspec=openspec-ops-intercept` with `OPENSPEC_REAL_BIN` set so `op
 <!-- openspec-ops:worktree-alignment BEGIN -->
 ## openspec-ops worktree alignment (apply)
 
-Once change name `<name>` is known:
-
-1. `openspec-ops where "<name>" --json` (or `start` if missing)
-2. On success: use `result.path` as **cwd** for implementation edits and OpenSpec CLI for that change.
-3. If alignment required and where/start fails: STOP rather than implementing only on primary by accident.
-4. If `result.submodules` shows `detached: true`, create/switch a branch in that submodule before substantial edits; commit submodule first, then parent gitlink.
-
-**ensure/start does NOT switch process cwd.** Path alignment ≠ submodule branch.
-
-Default delivery order: **merge → archive → finish** (ship/PR is separate; openspec-ops does not auto-merge).
+1. Prefer `openspec-ops where "<name>" --json` (or start if missing).
+2. When a worktree path `W` is known, implement and run OpenSpec under `W`.
+3. If no worktree: warn and only then continue on primary.
 <!-- openspec-ops:worktree-alignment END -->
 ```
