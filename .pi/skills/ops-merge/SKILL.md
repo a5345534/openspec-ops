@@ -2,8 +2,8 @@
 name: ops-merge
 description: >
   Merge the GitHub PR for an OpenSpec change via openspec-ops merge (gh).
-  Use only when the user explicitly asks to merge. Default squash; checks must
-  be green. Does not archive, finish, or prune.
+  Use only when the user explicitly asks to merge. Default squash; non-empty
+  checks must be green (empty checks allow by default). Does not archive, finish, or prune.
 license: MIT
 compatibility: openspec-ops CLI + GitHub CLI gh
 metadata:
@@ -34,7 +34,8 @@ Require `schemaVersion === 1`.
 
 1. Confirm user asked to **merge** (not only ship/review).
 2. Run merge with `--json` (default method squash).
-3. On `checks_failed`: report; do not bypass; wait for CI green and re-run.
+3. On `checks_failed`: report; do not bypass. Pending/fail always block.
+   Empty checks: allowed by default; only block if `OPENSPEC_OPS_MERGE_EMPTY_CHECKS=refuse`.
 4. On `pr_not_found`: ship first or fix branch name.
 5. On success / `already_merged`: report PR; **next** (do not auto-run): `/opsx-archive` → finish → prune.
 

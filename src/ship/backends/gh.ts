@@ -233,12 +233,58 @@ export function findOpenPullRequest(cwd: string, head: string): OpenPullRequest 
   return null;
 }
 
+/** How to treat PRs with zero reported status checks. */
+export type EmptyChecksPolicy = "allow" | "refuse";
+
+/**
+ * Parse OPENSPEC_OPS_MERGE_EMPTY_CHECKS.
+ * Default **allow** (no CI configured ⇒ no gate).
+ * Set `refuse` / `strict` / `fail` for fail-closed empty checks.
+ */
+export function parseEmptyChecksPolicy(
+  raw: string | undefined = process.env.OPENSPEC_OPS_MERGE_EMPTY_CHECKS,
+): EmptyChecksPolicy {
+  if (raw == null || raw.trim() === "") return "allow";
+  const v = raw.trim().toLowerCase();
+  if (v === "refuse" || v === "strict" || v === "fail" || v === "off") {
+    return "refuse";
+  }
+  // on, allow, true, yes, …
+  return "allow";
+}
+
+/** Detect gh messaging when the PR has no status checks at all. */
+export function isNoChecksReportedMessage(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("no checks reported") ||
+    m.includes("no checks") ||
+    m.includes("without any checks") ||
+    m.includes("found 0 checks")
+  );
+}
+
+function refuseEmptyChecks(prNumber: number): never {
+  throw new CliError(
+    "checks_failed",
+    `PR #${prNumber} has no reported checks; refusing to merge ` +
+      `(set OPENSPEC_OPS_MERGE_EMPTY_CHECKS=allow or leave unset to allow).`,
+    { pr: prNumber, emptyChecks: true },
+  );
+}
+
 /**
  * Evaluate PR checks via `gh pr checks`.
- * Fail closed: non-zero exit or any non-success state → not passing.
- * gh pr checks exits 0 when all pass; 1 if any pending/fail (typical).
+ * - Non-success / pending checks → checks_failed (always).
+ * - Zero checks → allow by default; refuse if OPENSPEC_OPS_MERGE_EMPTY_CHECKS=refuse.
+ * gh pr checks exits 0 when all pass; 1 if any pending/fail (typical);
+ * often 1 with "no checks reported" when none are configured.
  */
-export function assertPullRequestChecksGreen(cwd: string, prNumber: number): void {
+export function assertPullRequestChecksGreen(
+  cwd: string,
+  prNumber: number,
+  emptyPolicy: EmptyChecksPolicy = parseEmptyChecksPolicy(),
+): void {
   ensureGhAvailable(cwd);
   // JSON state per check when supported
   const jsonRes = runGh(
@@ -255,13 +301,10 @@ export function assertPullRequestChecksGreen(cwd: string, prNumber: number): voi
       if (!Array.isArray(checks)) {
         throw new Error("not array");
       }
-      // Empty checks: treat as fail closed (cannot prove green)
+      // Empty checks: no CI configured — default allow
       if (checks.length === 0) {
-        throw new CliError(
-          "checks_failed",
-          `PR #${prNumber} has no reported checks; refusing to merge (fail closed).`,
-          { pr: prNumber },
-        );
+        if (emptyPolicy === "refuse") refuseEmptyChecks(prNumber);
+        return;
       }
       const bad = checks.filter((c) => {
         const state = (c.state ?? "").toUpperCase();
@@ -290,13 +333,18 @@ export function assertPullRequestChecksGreen(cwd: string, prNumber: number): voi
 
   const plain = runGh(["pr", "checks", String(prNumber)], cwd);
   if (plain.status !== 0) {
-    throw new CliError(
-      "checks_failed",
+    const detail =
       plain.stderr.trim() ||
-        plain.stdout.trim() ||
-        `PR #${prNumber} checks not successful (gh pr checks exit ${plain.status}).`,
-      { pr: prNumber, status: plain.status },
-    );
+      plain.stdout.trim() ||
+      `PR #${prNumber} checks not successful (gh pr checks exit ${plain.status}).`;
+    if (isNoChecksReportedMessage(detail)) {
+      if (emptyPolicy === "refuse") refuseEmptyChecks(prNumber);
+      return;
+    }
+    throw new CliError("checks_failed", detail, {
+      pr: prNumber,
+      status: plain.status,
+    });
   }
 }
 
