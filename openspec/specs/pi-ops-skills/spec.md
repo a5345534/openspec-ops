@@ -16,7 +16,7 @@ The project SHALL provide Pi skills and matching slash prompts for workspace lif
 | `.pi/skills/ops-finish/` | `.pi/prompts/ops-finish.md` | `openspec-ops finish` |
 | `.pi/skills/ops-doctor/` | `.pi/prompts/ops-doctor.md` | `openspec-ops doctor` |
 
-Additional package-exported skills (e.g. `ops-review`) MUST also use the `ops-` prefix.
+Additional package-exported skills (e.g. `ops-spec-review`) MUST also use the `ops-` prefix.
 
 The Pi package export surface MUST NOT include skills named `openspec-*` or prompts named `opsx-*`.
 

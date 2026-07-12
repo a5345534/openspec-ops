@@ -2,20 +2,20 @@
 
 ## Purpose
 
-Pi harness gate that opens a new agent turn to run ops-review after propose artifacts are ready, without a mechanical review CLI and without coupling to worktree ensure success.
+Pi harness gate that opens a new agent turn to run ops-spec-review after propose artifacts are ready, without a mechanical review CLI and without coupling to worktree ensure success.
 
 ## Requirements
 
 ### Requirement: Follow-up turn review gate without mechanical review CLI
-The system SHALL provide a Pi extension path that schedules a **new agent turn** to run the existing ops-review skill/prompt after propose artifacts are ready.
+The system SHALL provide a Pi extension path that schedules a **new agent turn** to run the ops-spec-review skill/prompt after propose artifacts are ready.
 
 The extension MUST NOT implement a mechanical `openspec-ops review` CLI as the review body for this capability.
 
 The extension MUST NOT replace or reimplement OpenSpec propose. Review scheduling MUST NOT abort or handle propose input.
 
-#### Scenario: Review body remains ops-review skill
+#### Scenario: Review body remains ops-spec-review skill
 - **WHEN** the gate fires a follow-up review for change `add-dark-mode`
-- **THEN** the scheduled user message invokes the ops-review entrypoint for `add-dark-mode` (e.g. `/ops-review add-dark-mode`)
+- **THEN** the scheduled user message invokes the ops-spec-review entrypoint for `add-dark-mode` (e.g. `/ops-spec-review add-dark-mode`)
 - **AND** the extension does not perform cross-artifact review analysis itself
 
 #### Scenario: Propose input is not cancelled by review arm
@@ -93,7 +93,7 @@ When a review watch is armed, the extension SHALL re-evaluate readiness on `agen
 **v1 readiness:** `openspec/changes/<change>/proposal.md` exists under a resolved project/primary path (and/or active workspace path when known).
 
 - If not ready: MUST keep the watch and MUST NOT schedule follow-up review
-- If ready: MUST clear the watch and MUST schedule exactly one follow-up user message that starts ops-review for that change
+- If ready: MUST clear the watch and MUST schedule exactly one follow-up user message that starts ops-spec-review for that change
 
 #### Scenario: Not ready keeps watch
 - **WHEN** a review watch is armed for `add-dark-mode`
@@ -106,7 +106,7 @@ When a review watch is armed, the extension SHALL re-evaluate readiness on `agen
 - **WHEN** a review watch is armed for `add-dark-mode`
 - **AND** settle runs
 - **AND** `openspec/changes/add-dark-mode/proposal.md` exists
-- **THEN** the extension schedules a follow-up user message to run ops-review for `add-dark-mode`
+- **THEN** the extension schedules a follow-up user message to run ops-spec-review for `add-dark-mode`
 - **AND** the watch is cleared so a later settle does not schedule a second review for the same arm
 
 #### Scenario: No finish-style CLI review
@@ -126,12 +126,12 @@ After this capability is implemented, auto-review primary behavior SHALL be the 
 
 ---
 
-### Requirement: Manual ops-review remains available
-The system MUST keep the ops-review skill/prompt usable manually when auto-review is off or when no watch was armed.
+### Requirement: Manual ops-spec-review remains available
+The system MUST keep the ops-spec-review skill/prompt usable manually when auto-review is off or when no watch was armed.
 
 #### Scenario: Manual review with policy off
 - **WHEN** `OPENSPEC_OPS_AUTO_REVIEW=off`
-- **AND** the user runs `/ops-review <change>` manually
+- **AND** the user runs `/ops-spec-review <change>` manually
 - **THEN** manual review remains functional
 
 ---
@@ -139,7 +139,7 @@ The system MUST keep the ops-review skill/prompt usable manually when auto-revie
 ### Requirement: Documentation
 The root README SHALL document:
 
-- That auto-review opens a **follow-up turn** to run ops-review after propose artifacts are ready
+- That auto-review opens a **follow-up turn** to run ops-spec-review after propose artifacts are ready
 - That arming is independent of auto-ensure
 - `OPENSPEC_OPS_AUTO_REVIEW=on|off` (default `on`)
 - That v1 readiness is presence of `proposal.md`
@@ -153,7 +153,7 @@ The root README SHALL document:
 ---
 
 ### Requirement: Review watch without requiring slash change name
-The extension SHALL be able to schedule ops-review follow-up for a change when a proposal artifact becomes ready, even if review was not armed from a slash command that included the change name.
+The extension SHALL be able to schedule ops-spec-review follow-up for a change when a proposal artifact becomes ready, even if review was not armed from a slash command that included the change name.
 
 At minimum, on agent settle (or equivalent), the extension MUST consider active changes that have `openspec/changes/<name>/proposal.md` present under resolved roots and MAY arm or fire follow-up review per existing auto-review policy (`OPENSPEC_OPS_AUTO_REVIEW`).
 
@@ -163,7 +163,7 @@ One-shot behavior MUST prevent repeatedly scheduling follow-up for the same chan
 - **WHEN** review policy is `on`
 - **AND** `openspec/changes/add-dark-mode/proposal.md` exists under a resolved root
 - **AND** no slash-propose arm was recorded for that name
-- **THEN** the extension can schedule a follow-up user message to run ops-review for `add-dark-mode`
+- **THEN** the extension can schedule a follow-up user message to run ops-spec-review for `add-dark-mode`
 
 #### Scenario: auto-review off disables discovery fire
 - **WHEN** `OPENSPEC_OPS_AUTO_REVIEW=off`

@@ -16,8 +16,8 @@ export function isProposalReady(
   return false;
 }
 
-/** Slash entrypoint for follow-up review turn (project prompt: ops-review). */
-export const OPS_REVIEW_SLASH = "/ops-review";
+/** Slash entrypoint for follow-up plan/spec review-fix turn (ops-spec-review). */
+export const OPS_REVIEW_SLASH = "/ops-spec-review";
 
 export function buildOpsReviewFollowUpMessage(change: string): string {
   return `${OPS_REVIEW_SLASH} ${change}`;

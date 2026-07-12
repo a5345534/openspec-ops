@@ -7,10 +7,12 @@
  *
  * 2) Auto-review follow-up turn (independent of ensure success):
  *    /opsx-propose <kebab> → arm sticky review watch
- *    agent_settled → if proposal.md ready → sendUserMessage("/ops-review …", followUp)
+ *    agent_settled → if proposal.md ready → sendUserMessage("/ops-spec-review …", followUp)
+ *    Full iterative review-fix loop (edits artifacts); not read-only
  *    Ensure hard-abort → clear review watch (no zombie)
  *    Policy: OPENSPEC_OPS_AUTO_REVIEW=on|off (default on)
- *    Entrypoint: /ops-review (project prompt .pi/prompts/ops-review.md)
+ *    Entrypoint: /ops-spec-review (skill/prompt ops-spec-review)
+ *    max rounds: /ops-config set spec-review.max-rounds | env OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS | 3
  *
  * 3) Auto-finish orphan reclaim (post-archive watch):
  *    /opsx-archive <kebab> → arm sticky watch (never finish at input)
@@ -46,6 +48,18 @@ import {
   parseAutoFinishPolicy,
 } from "../../src/auto-finish/index.js";
 import {
+  formatConfigInjection,
+  getEffectiveEntry,
+  getEffectiveMaxRounds,
+  isKnownKey,
+  listKnownKeys,
+  resetSessionConfig,
+  setSessionValue,
+  showAll,
+  unsetSessionValue,
+  SPEC_REVIEW_MAX_ROUNDS_KEY,
+} from "../../src/pi-config/index.js";
+import {
   buildOpsReviewFollowUpMessage,
   discoverReadyProposalChanges,
   isProposalReady,
@@ -70,7 +84,7 @@ type WorkspaceState = {
 
 export default function (pi: ExtensionAPI) {
   let active: WorkspaceState | null = null;
-  /** Sticky watches for ops-review follow-up turns (slash-armed names). */
+  /** Sticky watches for ops-spec-review follow-up turns (slash-armed names). */
   const reviewWatches = new Set<string>();
   /** One-shot: review follow-ups already scheduled this session. */
   const reviewScheduled = new Set<string>();
@@ -80,7 +94,7 @@ export default function (pi: ExtensionAPI) {
   let settleRunning = false;
 
   pi.on("input", async (event, ctx) => {
-    // Never re-arm from extension-injected messages (e.g. followUp /ops-review)
+    // Never re-arm from extension-injected messages (e.g. followUp /ops-spec-review)
     if (event.source === "extension") {
       return { action: "continue" };
     }
@@ -283,8 +297,19 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async () => {
+    const configBlock = formatConfigInjection(process.env);
+    const maxR = getEffectiveMaxRounds(process.env);
+
     // Workspace path handoff — REQUIRED write root (ensure does not chdir)
-    if (!active) return;
+    if (!active) {
+      return {
+        message: {
+          customType: "openspec-ops-config",
+          content: configBlock,
+          display: false,
+        },
+      };
+    }
 
     const lines = [
       `Active openspec-ops workspace: change=${active.change} path=${active.path} branch=${active.branch} mode=${active.mode}.`,
@@ -305,6 +330,8 @@ export default function (pi: ExtensionAPI) {
     }
     lines.push(
       `Note: ensure/start does NOT switch the process cwd by itself. OpenSpec propose/apply/archive semantics are unchanged; workspace was ensured by harness only.`,
+      configBlock,
+      `For /ops-spec-review: use max rounds = ${maxR.value} (source=${maxR.source}).`,
     );
 
     // One-shot handoff: clear after inject so later turns do not re-assert stale mode
@@ -503,6 +530,77 @@ export default function (pi: ExtensionAPI) {
           mode: "propose",
         };
         ctx.ui.notify(`Workspace @ ${outcome.path} (${outcome.action})`, "info");
+      }
+    },
+  });
+
+  // Session config (no project config files)
+  pi.registerCommand("ops-config", {
+    description:
+      "Session openspec-ops settings (show|get|set|unset|reset). Not a project file.",
+    handler: async (args, ctx) => {
+      const parts = (args ?? "").trim().split(/\s+/).filter(Boolean);
+      const sub = (parts[0] ?? "show").toLowerCase();
+
+      try {
+        if (sub === "show" || sub === "list") {
+          const rows = showAll(process.env);
+          const text = rows.map((r) => `${r.key}=${r.value} (${r.source})`).join("\n");
+          ctx.ui.notify(
+            text || "(no keys)\nSession-only; resets when Pi restarts.",
+            "info",
+          );
+          return;
+        }
+        if (sub === "get") {
+          const key = parts[1];
+          if (!key) {
+            ctx.ui.notify("Usage: /ops-config get <key>", "warning");
+            return;
+          }
+          if (!isKnownKey(key)) {
+            ctx.ui.notify(`Unknown key. Known: ${listKnownKeys().join(", ")}`, "warning");
+            return;
+          }
+          const e = getEffectiveEntry(key, process.env);
+          ctx.ui.notify(`${e.key}=${e.value} (source=${e.source})`, "info");
+          return;
+        }
+        if (sub === "set") {
+          const key = parts[1];
+          const value = parts.slice(2).join(" ");
+          if (!key || !value) {
+            ctx.ui.notify("Usage: /ops-config set <key> <value>", "warning");
+            return;
+          }
+          setSessionValue(key, value);
+          const e = getEffectiveEntry(key, process.env);
+          ctx.ui.notify(`Set ${e.key}=${e.value} (session)`, "info");
+          return;
+        }
+        if (sub === "unset") {
+          const key = parts[1];
+          if (!key) {
+            ctx.ui.notify("Usage: /ops-config unset <key>", "warning");
+            return;
+          }
+          unsetSessionValue(key);
+          const e = getEffectiveEntry(key, process.env);
+          ctx.ui.notify(`Unset session ${key}; now ${e.value} (${e.source})`, "info");
+          return;
+        }
+        if (sub === "reset") {
+          resetSessionConfig();
+          ctx.ui.notify("Cleared all session overrides (env/defaults apply).", "info");
+          return;
+        }
+        ctx.ui.notify(
+          "Usage: /ops-config show|get <key>|set <key> <value>|unset <key>|reset\n" +
+            `Keys: ${listKnownKeys().join(", ")} (e.g. ${SPEC_REVIEW_MAX_ROUNDS_KEY})`,
+          "warning",
+        );
+      } catch (err) {
+        ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
       }
     },
   });

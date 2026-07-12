@@ -54,10 +54,10 @@ describe("isProposalReady", () => {
 });
 
 describe("buildOpsReviewFollowUpMessage", () => {
-  it("uses /ops-review slash entrypoint", () => {
-    expect(OPS_REVIEW_SLASH).toBe("/ops-review");
+  it("uses /ops-spec-review slash entrypoint", () => {
+    expect(OPS_REVIEW_SLASH).toBe("/ops-spec-review");
     expect(buildOpsReviewFollowUpMessage("add-dark-mode")).toBe(
-      "/ops-review add-dark-mode",
+      "/ops-spec-review add-dark-mode",
     );
   });
 });

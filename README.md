@@ -19,7 +19,7 @@ openspec-ops start / auto-ensure / intercept
         │
 /opsx-propose          plan artifacts in worktree W
         │
-/ops-review            optional plan quality gate
+/ops-spec-review       iterative plan/spec review-fix (before apply)
         │
 /opsx-apply            implement in W (extension binds path when name known)
         │
@@ -166,7 +166,7 @@ npm link
 }
 ```
 
-- **Ships:** `ops-start` / `ops-where` / `ops-finish` / `ops-doctor` / `ops-review` + extension + CLI
+- **Ships:** `ops-start` / `ops-where` / `ops-finish` / `ops-doctor` / `ops-spec-review` / `ops-ship` / `ops-prune` + extension + CLI
 - **Does not ship (as package skills/prompts):** `openspec-*`, `opsx-*` — your project keeps its own from `openspec init` / `openspec update`
 - Vendored upstream copies (if any) live under `vendor/openspec-pi-ref/` for reference only and are **not** in `pi.*`
 
@@ -221,7 +221,7 @@ export OPENSPEC_OPS_INTERCEPT_NEW_CHANGE=off
 
 Package.json registers **`openspec-ops-intercept`** only (does **not** replace global `openspec`).
 
-Auto-review follow-up no longer requires a slash change name: when the Pi extension is loaded, settle-time discovery schedules `/ops-review <change>` when `proposal.md` appears.
+Auto-review follow-up schedules `/ops-spec-review <change>` when `proposal.md` appears (full review-fix loop, may edit artifacts; set OPENSPEC_OPS_AUTO_REVIEW=off to skip).
 
 ### Commands
 
@@ -280,14 +280,15 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-prune` · `ops-prune` | `openspec-ops prune` (delete branch if PR merged; after finish) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` |
 | `/ops-doctor` · `ops-doctor` | `openspec-ops doctor` |
-| `/ops-review` · `ops-review` | Read & analyze artifacts (agent-driven, no new CLI) |
+| `/ops-spec-review` · `ops-spec-review` | Iterative plan/spec review-fix (agent-driven; edits artifacts) |
+| `/ops-config` | Session settings (e.g. `spec-review.max-rounds`; not a project file) |
 
 Typical loop in Pi:
 
 ```text
 /opsx-propose <change>   # harness may auto-ensure worktree first (see below)
         │
-/ops-review <change>     # optional quality gate
+/ops-spec-review <change>  # iterative plan/spec review-fix
         │
 /opsx-apply
         │
@@ -323,6 +324,21 @@ Requirements for the agent / extension:
 
 Optional: symlink these skills into `~/.pi/agent/skills/` for other repos; prefer keeping CLI and skill versions aligned.
 
+## Pi session config (`/ops-config`)
+
+Session-only settings (not a project config file; reset when Pi restarts).
+
+```text
+/ops-config show
+/ops-config set spec-review.max-rounds 5
+/ops-config get spec-review.max-rounds
+/ops-config unset spec-review.max-rounds
+/ops-config reset
+```
+
+Precedence: **session > env > default**.  
+`spec-review.max-rounds` default **3** (env: `OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS`).
+
 ## Pi extension: auto-ensure + auto-review + auto-finish
 
 Project extension: `.pi/extensions/openspec-ops-auto-ensure.ts`
@@ -350,25 +366,26 @@ export OPENSPEC_OPS_AUTO_START=off
 
 ### Auto-review (follow-up turn after propose)
 
-Schedules a **new agent turn** to run **ops-review** when propose artifacts are ready—not a same-turn side note, and not a mechanical review CLI.
+Schedules a **new agent turn** to run **ops-spec-review** (full review→fix→re-review loop) when propose artifacts are ready—not a mechanical review CLI. Can be multi-round; disable with OPENSPEC_OPS_AUTO_REVIEW=off.
 
 1. **Watch arm** (v1): `/opsx-propose <kebab-name>` (or `/opsx:propose …`) with parseable name and policy `on` → sticky review watch (**independent of ensure success**; still arms when `AUTO_START=off` / ensure skipped)
 2. **Ensure hard-abort** (missing bin / conflict `handled`): clears that review watch (no zombie)
 3. **Check points**: each `agent_settled` while review watches exist
 4. **Readiness (v1):** `openspec/changes/<change>/proposal.md` exists (project root, cwd, and/or active workspace path)
-5. When ready → clear watch → `sendUserMessage("/ops-review <change>", { deliverAs: "followUp" })` → new turn expands ops-review
+5. When ready → clear watch → `sendUserMessage("/ops-spec-review <change>", { deliverAs: "followUp" })` → new turn runs iterative fix loop
 6. When not ready → keep watch (multi-turn propose safe)
 
 | `OPENSPEC_OPS_AUTO_REVIEW` | Behavior |
 |---|---|
-| `on` (default) | Arm on slash-propose + follow-up `/ops-review` when ready |
-| `off` | No arm; use `/ops-review <change>` manually |
+| `on` (default) | Arm on slash-propose + follow-up `/ops-spec-review` when ready (full fix loop) |
+| `off` | No arm; use `/ops-spec-review <change>` manually |
 
 ```bash
 export OPENSPEC_OPS_AUTO_REVIEW=off
 ```
 
-- Review body remains the **ops-review** skill/prompt (LLM). No `openspec-ops review` CLI.
+- Review body is **ops-spec-review** (LLM, iterative). No `openspec-ops review` CLI.
+- Max rounds: `/ops-config set spec-review.max-rounds N` or env `OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS` (default 3; session > env > default).
 - v1 requires kebab change name on the propose slash to arm (skill-path propose is not detected).
 
 ### Auto-finish (orphan worktree reclaim)
