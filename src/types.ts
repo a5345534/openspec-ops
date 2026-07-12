@@ -1,6 +1,6 @@
 export const SCHEMA_VERSION = 1 as const;
 
-export type CommandName = "start" | "where" | "finish" | "doctor";
+export type CommandName = "start" | "where" | "finish" | "doctor" | "ship";
 
 export type ErrorCode =
   | "usage"
@@ -16,7 +16,11 @@ export type ErrorCode =
   | "worktree_dirty"
   | "not_found"
   | "git_failed"
-  | "internal";
+  | "internal"
+  | "nothing_to_ship"
+  | "pr_backend_unavailable"
+  | "pr_failed"
+  | "submodule_detached_dirty";
 
 export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 10;
 
@@ -62,12 +66,16 @@ export function exitCodeForError(code: ErrorCode): ExitCode {
     case "branch_busy":
     case "branch_mismatch":
     case "ambiguous":
+    case "submodule_detached_dirty":
+    case "nothing_to_ship":
       return 3;
     case "worktree_dirty":
       return 4;
     case "not_found":
       return 5;
     case "git_failed":
+    case "pr_backend_unavailable":
+    case "pr_failed":
     case "internal":
     default:
       return 10;
@@ -105,6 +113,36 @@ export interface StartOptions extends ChangeOptions {
 
 export interface FinishOptions extends ChangeOptions {
   force: boolean;
+}
+
+export interface ShipOptions extends ChangeOptions {
+  message?: string;
+  title?: string;
+  body?: string;
+  draft: boolean;
+  remote: string;
+  /** PR base branch name (e.g. main); default resolved from repo */
+  base?: string;
+  backend: string;
+}
+
+export interface ShipResult {
+  action: "shipped" | "pushed" | "pr_only" | "pr_exists";
+  change: string;
+  path: string;
+  branch: string;
+  remote: string;
+  base: string;
+  commit: { created: boolean; sha: string | null; message: string | null } | null;
+  push: { ok: boolean; skipped: boolean };
+  pr: {
+    url: string;
+    number: number;
+    backend: string;
+    draft: boolean;
+    alreadyExisted?: boolean;
+  } | null;
+  warnings: Array<{ code: string; message: string }>;
 }
 
 export interface StartResult {

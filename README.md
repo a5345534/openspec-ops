@@ -23,7 +23,7 @@ openspec-ops start / auto-ensure / intercept
         │
 /opsx-apply            implement in W (extension binds path when name known)
         │
-git commit + PR        (future: ops-ship — not in core finish)
+openspec-ops ship      commit entire W + push + gh PR (no merge; not finish)
         │
 review + merge → main
         │
@@ -63,12 +63,33 @@ openspec-ops start <change>     # branch + worktree
         │
 /opsx:propose  →  review  →  /opsx:apply
         │
-git commit && PR → merge
+openspec-ops ship <change>      # commit worktree + push + gh PR (no merge)
+        │
+review + merge → main
         │
 /opsx:archive                   # 原版 OpenSpec
         │
 openspec-ops finish <change>    # remove worktree (keep branch)
 ```
+
+### Ship (commit + PR)
+
+```bash
+openspec-ops ship <change> --json
+openspec-ops ship <change> -m "feat: ..." --title "..." --draft --json
+```
+
+- Stages **all** changes in the change worktree (`git add -A`), one commit.
+- Default message: `ship(<change>): worktree`.
+- Pushes to `origin` (or `--remote`) **without** `--force`.
+- Opens/reuses a PR via **GitHub CLI `gh`** (`--backend gh`; pluggable later).
+  Requires a `gh` that supports `gh pr create --json url,number` and `gh pr list --json`.
+- Aborts if a top-level submodule is **detached and dirty**; clean detached warns and continues.
+- If push succeeds but PR fails: fix `gh`/auth and **re-run ship** (clean tree → no new commit).
+- Clean + fully synced + no PR range: may exit `nothing_to_ship` (exit 3).
+- Ahead/behind detection uses local `origin/<branch>` (run `git fetch` if remotes look stale).
+- Does **not** merge, archive, or remove the worktree. Finish still never commits.
+
 
 ### Install / run
 
@@ -204,16 +225,18 @@ Auto-review follow-up no longer requires a slash change name: when the Pi extens
 | Command | Purpose |
 |---|---|
 | `start <change>` | Create or reuse worktree at `<primary>/.worktrees/<change>` on branch `<change>` |
-| `where <change>` | Print workspace path (strict: exit 5 if missing) |
+| `where <change>` | Print workspace path (strict: exit 5 if missing); includes `submodules[]` |
+| `ship <change>` | Commit entire worktree, push branch, open/reuse PR via `gh` (no merge/force) |
 | `finish <change>` | Remove worktree; **keeps branch**. Dirty requires `--force` |
-| `doctor` | Read-only health report (stale dirs, missing paths, …) |
+| `doctor` | Read-only health report (stale dirs, submodules, missing paths, …) |
 
 Common flags:
 
 - `--json` — stable envelope (`schemaVersion: 1`)
 - `--repo <path>` — operate on a specific repo
-- `--path` / `--branch` / `--base` — overrides for `start` (and path/branch for where/finish)
+- `--path` / `--branch` / `--base` — overrides for `start` (and path/branch for where/finish/ship)
 - `--force` — `finish` only
+- ship also: `-m/--message`, `--title`, `--body`, `--draft`, `--remote`, `--backend`
 
 Defaults:
 
@@ -249,6 +272,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 |---|---|
 | `/ops-start` · `ops-start` | `openspec-ops start` |
 | `/ops-where` · `ops-where` | `openspec-ops where` |
+| `/ops-ship` · `ops-ship` | `openspec-ops ship` (commit+push+gh PR; no merge) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` |
 | `/ops-doctor` · `ops-doctor` | `openspec-ops doctor` |
 | `/ops-review` · `ops-review` | Read & analyze artifacts (agent-driven, no new CLI) |
@@ -258,12 +282,13 @@ Typical loop in Pi:
 ```text
 /opsx-propose <change>   # harness may auto-ensure worktree first (see below)
         │
-/ops-review <change>     # optional quality gate (new, see ops-review skill)
+/ops-review <change>     # optional quality gate
         │
-/opsx-apply → (/opsx-archive)   # original OpenSpec
+/opsx-apply
         │
-/ops-finish <change>     # optional cleanup; not archive
-                         # (Pi may also auto-reclaim orphan worktrees — see below)
+/ops-ship <change>       # commit worktree + push + PR (requires gh; no merge)
+        │
+merge → /opsx-archive → /ops-finish
 ```
 
 Manual workspace entry (advanced): `/ops-start <change>` or CLI `openspec-ops start`.

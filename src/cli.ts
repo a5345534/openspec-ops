@@ -1,5 +1,6 @@
 import { runDoctor } from "./commands/doctor.js";
 import { runFinish } from "./commands/finish.js";
+import { runShip } from "./commands/ship.js";
 import { runStart } from "./commands/start.js";
 import { runWhere } from "./commands/where.js";
 import { printError } from "./output.js";
@@ -16,7 +17,17 @@ Usage:
   openspec-ops start  <change> [--path P] [--branch B] [--base REF] [--json] [--repo PATH]
   openspec-ops where  <change> [--path P] [--branch B] [--json] [--repo PATH]
   openspec-ops finish <change> [--path P] [--branch B] [--force] [--json] [--repo PATH]
+  openspec-ops ship   <change> [ship flags] [--json] [--repo PATH]
   openspec-ops doctor [--json] [--repo PATH]
+
+Ship flags:
+  -m, --message <msg>   Commit message (default: ship(<change>): worktree)
+  --title <title>       PR title (default: commit message)
+  --body <body>         PR body
+  --draft               Open PR as draft
+  --remote <name>       Git remote (default: origin)
+  --base <branch>       PR base branch (default: origin/HEAD or main/master)
+  --backend <id>        PR backend (default: gh)
 
 Global flags:
   --json          Machine-readable JSON envelope (schemaVersion 1)
@@ -27,6 +38,9 @@ Global flags:
 Defaults:
   branch = <change>
   path   = <primary>/.worktrees/<change>
+
+Ship commits the entire worktree (git add -A), pushes without --force, opens a PR via gh.
+Ship does not merge, archive, or finish the worktree.
 `);
 }
 
@@ -57,6 +71,19 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (arg === "--force") {
       flags.force = true;
+      continue;
+    }
+    if (arg === "--draft") {
+      flags.draft = true;
+      continue;
+    }
+    if (arg === "-m") {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("-")) {
+        throw new CliError("usage", "-m requires a message argument", {});
+      }
+      flags.message = next;
+      i++;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -173,6 +200,24 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           throw new CliError("usage", `Unexpected arguments: ${parsed.positional.join(" ")}`, {});
         }
         runDoctor({ json, repo });
+        return 0;
+      }
+      case "ship": {
+        commandName = "ship";
+        runShip({
+          change: requireChange(parsed.positional),
+          json,
+          repo,
+          path,
+          branch,
+          message: flagString(parsed.flags, "message"),
+          title: flagString(parsed.flags, "title"),
+          body: flagString(parsed.flags, "body"),
+          draft: Boolean(parsed.flags.draft),
+          remote: flagString(parsed.flags, "remote") ?? "origin",
+          base: flagString(parsed.flags, "base"),
+          backend: flagString(parsed.flags, "backend") ?? "gh",
+        });
         return 0;
       }
       default:
