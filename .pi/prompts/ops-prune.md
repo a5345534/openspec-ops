@@ -1,4 +1,6 @@
----
+# ops-prune (deprecated)
+
+Prefer `/ops-finish`. ---
 name: ops-prune
 description: Delete local+remote change branches only if PR merged and worktree finished.
 ---

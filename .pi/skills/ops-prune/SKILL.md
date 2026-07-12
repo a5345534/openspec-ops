@@ -13,6 +13,9 @@ metadata:
 
 # ops-prune
 
+**Deprecated for primary closeout.** Prefer `openspec-ops finish` / `/ops-finish`
+(worktree remove + merged branch cleanup). prune remains branch-only if no worktree.
+
 Delete **local + remote** change branches when:
 
 1. Worktree is **gone** (`finish` already done)

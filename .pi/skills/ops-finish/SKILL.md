@@ -1,8 +1,8 @@
 ---
 name: ops-finish
 description: >
-  Remove the git worktree for an OpenSpec change via openspec-ops finish
-  (keeps the branch). Use when cleaning up a change workspace after merge
+  Remove the git worktree for an OpenSpec change via openspec-ops finish;
+  if PR is merged, also delete local+remote branch unless --keep-branch. Use when cleaning up a change workspace after merge
   or archive, or when the user asks to remove/delete a change worktree.
   Do not use this to archive OpenSpec specs — that is /opsx-archive.
 license: MIT
@@ -14,7 +14,9 @@ metadata:
 
 # ops-finish
 
-Remove a change **worktree** only. Branch is kept. Not an OpenSpec archive.
+Remove change **worktree** when present. If the PR is **merged** (gh), also delete
+**local + remote** branch unless `--keep-branch`. Not an OpenSpec archive.
+`prune` is deprecated—prefer finish for closeout.
 
 ## Shared runtime rules
 
@@ -116,7 +118,7 @@ Failure:
 
    | Condition | What to do |
    |---|---|
-   | exit 0 | Report removed; emphasize branch kept (`branchDeleted: false`) |
+   | exit 0 | Report action; note worktree removed and whether branch was deleted or kept |
    | exit 4 `worktree_dirty` | Explain; ask about `--force`; do not retry with force unprompted |
    | exit 5 `not_found` | Nothing to finish |
    | exit 3/2/10 | Shared table |
@@ -135,6 +137,14 @@ Failure:
 
    - Delete branch manually later if desired (not done by this tool).
    - Archive remains `/opsx-archive` on the appropriate checkout.
+
+## Closeout behavior
+
+After removing the worktree (if any):
+- If PR for the change branch is **merged** → delete local (`-d`) and remote branch (unless `--keep-branch`)
+- If **not** merged → keep branch
+- No worktree + merged → branch-only cleanup still OK
+- Prefer `finish` over deprecated `prune`
 
 ## Guardrails
 

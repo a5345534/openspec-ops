@@ -123,6 +123,10 @@ export interface StartOptions extends ChangeOptions {
 
 export interface FinishOptions extends ChangeOptions {
   force: boolean;
+  /** Skip merged-branch local/remote deletion */
+  keepBranch?: boolean;
+  /** Remote for branch delete when PR merged (default origin) */
+  remote?: string;
 }
 
 export interface ShipOptions extends ChangeOptions {
@@ -220,12 +224,25 @@ export interface WhereResult {
 }
 
 export interface FinishResult {
-  action: "removed";
+  action: "removed" | "removed_and_pruned" | "pruned_only" | "already_clean";
   change: string;
-  path: string;
+  path: string | null;
   branch: string;
-  branchDeleted: false;
+  /** True when local branch was deleted this run */
+  branchDeleted: boolean;
   forced: boolean;
+  worktreeRemoved: boolean;
+  keepBranch: boolean;
+  remote: string;
+  branchCleanup: {
+    attempted: boolean;
+    localDeleted: boolean;
+    localAlreadyAbsent: boolean;
+    remoteDeleted: boolean;
+    remoteAlreadyAbsent: boolean;
+    keptReason: "not_merged" | "keep_flag" | null;
+    mergedPr: { number: number; url: string } | null;
+  };
 }
 
 export interface DoctorWorktree {
