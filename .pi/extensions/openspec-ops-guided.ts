@@ -95,22 +95,24 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       const res = runOps(bin, ["start", change], { cwd: ctx.cwd });
-      if (res.code !== 0 || !res.json?.ok) {
-        ctx.ui.notify(
-          res.json?.error?.message ?? res.stderr || `start failed (${res.code})`,
-          "error",
-        );
+      const resJson = res.json;
+      if (res.code !== 0 || !resJson || !resJson.ok) {
+        const errMsg =
+          (resJson && resJson.error && resJson.error.message) ||
+          res.stderr ||
+          `start failed (${res.code})`;
+        ctx.ui.notify(errMsg, "error");
         return;
       }
-      const r = res.json.result ?? {};
+      const r = resJson.result || {};
       active = {
-        change: String(r.change ?? change),
-        path: String(r.path ?? ""),
-        branch: String(r.branch ?? change),
+        change: String(r.change != null ? r.change : change),
+        path: String(r.path != null ? r.path : ""),
+        branch: String(r.branch != null ? r.branch : change),
         mode: "propose",
       };
       ctx.ui.notify(
-        `Workspace @ ${active.path} (${String(r.action ?? "ok")}). Not auto-running propose.`,
+        `Workspace @ ${active.path} (${String(r.action != null ? r.action : "ok")}). Not auto-running propose.`,
         "info",
       );
     },
