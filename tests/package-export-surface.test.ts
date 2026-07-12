@@ -52,6 +52,7 @@ describe("package ops-only Pi surface", () => {
     const pkg = loadPkg();
     const files = pkg.files ?? [];
     expect(files.some((f) => f.includes("ops-next"))).toBe(true);
+    expect(files.some((f) => f.includes("ops-deliver"))).toBe(true);
   });
 
   it("clean build does not leave dist/auto-ensure", () => {

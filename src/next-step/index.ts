@@ -19,3 +19,10 @@ export {
   formatChangePickList,
 } from "./discover-changes.js";
 export { resolvePrSignals, type PrSignals } from "./pr-signals.js";
+export {
+  defaultDeliverAction,
+  deliverActionAfterReview,
+  DELIVER_PIPELINE_ORDER,
+  DELIVER_MAX_STEPS,
+} from "./deliver.js";
+
