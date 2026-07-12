@@ -16,7 +16,7 @@ function printHelp(): void {
 Harness-neutral git worktree lifecycle for OpenSpec changes.
 
 Usage:
-  openspec-ops start  <change> [--path P] [--branch B] [--base REF] [--json] [--repo PATH]
+  openspec-ops start  <change> [--path P] [--branch B] [--base REF] [--init-submodule-branches] [--json] [--repo PATH]
   openspec-ops where  <change> [--path P] [--branch B] [--json] [--repo PATH]
   openspec-ops finish <change> [--path P] [--branch B] [--force] [--keep-branch] [--remote R] [--json] [--repo PATH]
                       # remove worktree (deinit submodules); if PR merged, delete local+remote branch
@@ -86,6 +86,10 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (arg === "--force") {
       flags.force = true;
+      continue;
+    }
+    if (arg === "--init-submodule-branches") {
+      flags["init-submodule-branches"] = true;
       continue;
     }
     if (arg === "--keep-branch") {
@@ -187,6 +191,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           path,
           branch,
           base,
+          initSubmoduleBranches: Boolean(parsed.flags["init-submodule-branches"]),
         });
         return 0;
       }

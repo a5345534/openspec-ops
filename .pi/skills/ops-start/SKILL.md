@@ -82,6 +82,10 @@ Failure:
 - Do **not** pass `--force` unless the user clearly consents in this turn.
 - Prefer working directory = workspace `path` for later implementation commands; do not assume the chat cwd switched automatically.
 
+## Submodules (opt-in)
+
+For monorepos: `openspec-ops start <change> --init-submodule-branches` creates/switches a named branch (same as change branch) inside **detached** top-level submodules. Does **not** commit. Prefer this before long implementation in submodule paths.
+
 ## Input
 
 - **Required:** change name in kebab-case, OR a short description.
