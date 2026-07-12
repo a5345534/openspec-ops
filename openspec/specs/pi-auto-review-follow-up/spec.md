@@ -173,3 +173,12 @@ One-shot behavior MUST prevent repeatedly scheduling follow-up for the same chan
 - **WHEN** a follow-up review was already scheduled for `add-dark-mode` in the session
 - **AND** settle runs again with the same proposal present
 - **THEN** the extension does not schedule another follow-up for that change until policy/session rules allow a new arm
+
+---
+
+### Requirement: Follow-up turn runs full ops-spec-review loop
+The scheduled follow-up message MUST invoke `/ops-spec-review` so the full iterative review-fix skill runs (including direct artifact edits within max rounds), not a read-only one-shot.
+
+#### Scenario: Follow-up is full review-fix not read-only
+- **WHEN** auto-review schedules ops-spec-review after propose
+- **THEN** the intended skill behavior includes fixing major findings in artifacts when needed within max rounds

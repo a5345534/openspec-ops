@@ -119,3 +119,12 @@ The recommended delivery loop documentation SHALL include an optional **prune** 
 - **THEN** prune appears after merge/finish (not before merge)
 - **AND** finish is not described as deleting the branch by default
 
+
+---
+
+### Requirement: Documented loop includes ops-spec-review between propose and apply
+The recommended delivery loop documentation SHALL include **ops-spec-review** (iterative plan/spec review-fix) after propose and before apply.
+
+#### Scenario: README places spec review before apply
+- **WHEN** reading the recommended loop documentation after this change
+- **THEN** ops-spec-review or /ops-spec-review appears after propose and before apply
