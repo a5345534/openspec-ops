@@ -24,7 +24,8 @@ export type ErrorCode =
   | "worktree_exists"
   | "branch_not_merged"
   | "checks_failed"
-  | "pr_not_found";
+  | "pr_not_found"
+  | "submodule_teardown_failed";
 
 export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 10;
 
@@ -76,6 +77,7 @@ export function exitCodeForError(code: ErrorCode): ExitCode {
     case "branch_not_merged":
     case "checks_failed":
     case "pr_not_found":
+    case "submodule_teardown_failed":
       return 3;
     case "worktree_dirty":
       return 4;

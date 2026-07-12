@@ -1,5 +1,9 @@
 import { removeWorktree } from "../git.js";
 import { resolveRepoContext } from "../resolve.js";
+import {
+  isSubmoduleContainmentError,
+  prepareWorktreeForRemoval,
+} from "../submodules/teardown.js";
 import { locateWorkspace } from "./where.js";
 import { printSuccess } from "../output.js";
 import { CliError, type FinishOptions, type FinishResult } from "../types.js";
@@ -18,7 +22,28 @@ export function runFinish(options: FinishOptions): FinishResult {
     );
   }
 
-  removeWorktree(ctx.cwd, loc.path, options.force);
+  // Unload top-level submodules so git worktree remove can succeed
+  prepareWorktreeForRemoval(loc.path);
+
+  try {
+    removeWorktree(ctx.cwd, loc.path, options.force);
+  } catch (err) {
+    if (err instanceof CliError) {
+      const msg = err.message || "";
+      if (isSubmoduleContainmentError(msg) || err.code === "git_failed") {
+        if (isSubmoduleContainmentError(msg)) {
+          throw new CliError(
+            "submodule_teardown_failed",
+            `Cannot remove worktree ${loc.path}: still contains submodules after prepare. ` +
+              `Manually: cd ${loc.path} && git submodule deinit -f -- <path>, then retry finish. ${msg}`,
+            { path: loc.path, change: loc.change, cause: msg },
+          );
+        }
+      }
+      throw err;
+    }
+    throw err;
+  }
 
   const result: FinishResult = {
     action: "removed",

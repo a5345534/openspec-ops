@@ -61,6 +61,8 @@ Recommended order when you implement inside a submodule:
 `openspec-ops doctor` reports `submodule_detached` (info) and `submodule_detached_dirty` (warning).  
 Dirty `finish` messages mention submodule risk; openspec-ops never auto-commits submodules.
 
+**Finish + submodules:** before `git worktree remove`, finish **deinits** initialized top-level submodules in the change worktree (`git submodule deinit -f -- <path>`), then removes the worktree (branch kept). Dirty trees still need commit/stash or `--force`. If teardown fails: error `submodule_teardown_failed` with a manual deinit hint.
+
 ## Phase 0: workspace lifecycle CLI
 
 `openspec-ops` 提供 harness-neutral 的 git worktree 生命周期命令，对应官方 [team workflow](https://github.com/Fission-AI/OpenSpec/blob/main/docs/team-workflow.md) 左右两侧的 git 惯例，**中间的 `/opsx:*` 流程保持原样**。
@@ -239,7 +241,7 @@ Auto-review follow-up schedules `/ops-spec-review <change>` when `proposal.md` a
 | `where <change>` | Print workspace path (strict: exit 5 if missing); includes `submodules[]` |
 | `ship <change>` | Commit entire worktree, push branch, open/reuse PR via `gh` (no merge/force) |
 | `merge <change>` | Merge open PR via `gh` (default squash; checks must pass; no chain) |
-| `finish <change>` | Remove worktree; **keeps branch**. Dirty requires `--force` |
+| `finish <change>` | Remove worktree; **keeps branch**. Deinits top-level submodules first. Dirty requires `--force` |
 | `prune <change>` | Delete local+remote branch only if merged PR (gh) and no worktree |
 | `doctor` | Read-only health report (stale dirs, submodules, missing paths, …) |
 

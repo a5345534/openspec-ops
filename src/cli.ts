@@ -19,6 +19,7 @@ Usage:
   openspec-ops start  <change> [--path P] [--branch B] [--base REF] [--json] [--repo PATH]
   openspec-ops where  <change> [--path P] [--branch B] [--json] [--repo PATH]
   openspec-ops finish <change> [--path P] [--branch B] [--force] [--json] [--repo PATH]
+                      # deinits top-level submodules in the worktree, then removes it (branch kept)
   openspec-ops ship   <change> [ship flags] [--json] [--repo PATH]
   openspec-ops merge  <change> [--method squash|merge|rebase] [--json] [--repo PATH]
   openspec-ops prune  <change> [--remote R] [--branch B] [--json] [--repo PATH]
