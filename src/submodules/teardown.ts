@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { runGit, type GitRunResult } from "../git.js";
 import { CliError } from "../types.js";
@@ -12,6 +12,12 @@ export type GitRunner = (
 export interface TeardownOptions {
   runGit?: GitRunner;
 }
+
+export type PrepareWorktreeResult = {
+  deinited: string[];
+  /** Residual submodule dirs removed after deinit / hollow leftovers */
+  cleared: string[];
+};
 
 function listTopLevelPaths(worktreePath: string): string[] {
   const gm = join(worktreePath, ".gitmodules");
@@ -31,36 +37,61 @@ function looksInitialized(worktreePath: string, relPath: string): boolean {
 }
 
 /**
+ * Remove a residual submodule work dir when it no longer looks initialized.
+ * Safe for post-deinit hollow/empty directories that block worktree remove.
+ */
+function clearResidualIfSafe(
+  worktreePath: string,
+  relPath: string,
+  cleared: string[],
+): void {
+  const abs = join(worktreePath, relPath);
+  if (!existsSync(abs)) return;
+  if (looksInitialized(worktreePath, relPath)) return;
+  try {
+    rmSync(abs, { recursive: true, force: true });
+    cleared.push(relPath);
+  } catch {
+    // Leave path; removeWorktree / retry may still fail with actionable error
+  }
+}
+
+/**
  * Deinitialize initialized top-level submodules inside a change worktree
- * so `git worktree remove` can succeed.
+ * so `git worktree remove` can succeed. Also clears residual non-initialized
+ * directories for listed submodule paths (common post-deinit leftovers).
  */
 export function prepareWorktreeForRemoval(
   worktreePath: string,
   options: TeardownOptions = {},
-): { deinited: string[] } {
+): PrepareWorktreeResult {
   if (!worktreePath || !existsSync(worktreePath)) {
-    return { deinited: [] };
+    return { deinited: [], cleared: [] };
   }
 
   const git = options.runGit ?? runGit;
   const paths = listTopLevelPaths(worktreePath);
   const deinited: string[] = [];
+  const cleared: string[] = [];
   const failures: Array<{ path: string; message: string }> = [];
 
   for (const rel of paths) {
-    if (!looksInitialized(worktreePath, rel)) continue;
-    const res = git(["submodule", "deinit", "-f", "--", rel], {
-      cwd: worktreePath,
-      allowFailure: true,
-    });
-    if (res.status !== 0) {
-      failures.push({
-        path: rel,
-        message: (res.stderr || res.stdout || `deinit exit ${res.status}`).trim(),
+    if (looksInitialized(worktreePath, rel)) {
+      const res = git(["submodule", "deinit", "-f", "--", rel], {
+        cwd: worktreePath,
+        allowFailure: true,
       });
-      continue;
+      if (res.status !== 0) {
+        failures.push({
+          path: rel,
+          message: (res.stderr || res.stdout || `deinit exit ${res.status}`).trim(),
+        });
+        continue;
+      }
+      deinited.push(rel);
     }
-    deinited.push(rel);
+    // After successful deinit, or if never initialized but dir remains hollow
+    clearResidualIfSafe(worktreePath, rel, cleared);
   }
 
   if (failures.length > 0) {
@@ -68,11 +99,11 @@ export function prepareWorktreeForRemoval(
       "submodule_teardown_failed",
       `Failed to deinit submodule(s) under ${worktreePath}: ${failures.map((f) => f.path).join(", ")}. ` +
         `Manually: cd ${worktreePath} && git submodule deinit -f -- <path>, then openspec-ops finish again.`,
-      { worktreePath, failures, deinited },
+      { worktreePath, failures, deinited, cleared },
     );
   }
 
-  return { deinited };
+  return { deinited, cleared };
 }
 
 /** True if git stderr looks like submodule containment refusal. */

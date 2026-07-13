@@ -68,22 +68,41 @@ export function runFinish(
 
     deps.prepare(loc.path);
 
+    const failContainment = (msg: string): never => {
+      throw new CliError(
+        "submodule_teardown_failed",
+        `Cannot remove worktree ${loc.path}: still contains submodules after prepare. ` +
+          `Manually: cd ${loc.path} && git submodule deinit -f -- <path>, remove residual dirs if empty, then retry finish. ${msg}`,
+        { path: loc.path, change: loc.change, cause: msg },
+      );
+    };
+
     try {
       deps.removeWorktree(ctx.cwd, loc.path, force);
     } catch (err) {
       if (err instanceof CliError) {
         const msg = err.message || "";
         if (isSubmoduleContainmentError(msg)) {
-          throw new CliError(
-            "submodule_teardown_failed",
-            `Cannot remove worktree ${loc.path}: still contains submodules after prepare. ` +
-              `Manually: cd ${loc.path} && git submodule deinit -f -- <path>, then retry finish. ${msg}`,
-            { path: loc.path, change: loc.change, cause: msg },
-          );
+          // Re-prepare (clear residual dirs) and retry remove once
+          deps.prepare(loc.path);
+          try {
+            deps.removeWorktree(ctx.cwd, loc.path, force);
+          } catch (err2) {
+            if (err2 instanceof CliError) {
+              const msg2 = err2.message || "";
+              if (isSubmoduleContainmentError(msg2)) {
+                failContainment(msg2);
+              }
+              throw err2;
+            }
+            throw err2;
+          }
+        } else {
+          throw err;
         }
+      } else {
         throw err;
       }
-      throw err;
     }
     worktreeRemoved = true;
   } catch (err) {
