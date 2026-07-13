@@ -294,7 +294,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-where` · `ops-where` | `openspec-ops where` |
 | `/ops-ship` · `ops-ship` | `openspec-ops ship` (commit+push+gh PR; no merge) |
 | `/ops-impl-review` · `ops-impl-review` | Post-ship impl full-review rounds (fix+push in-round; choose via /ops-next) |
-| `/ops-deliver` · `ops-deliver` | Batch start→finish after explore (reviews required; merge on invoke) |
+| `/ops-deliver` · `ops-deliver` | Batch start→finish after explore (reviews required; merge on invoke); **extension binds slash change name** |
 | `/ops-merge` · `ops-merge` | Merge PR via `openspec-ops merge` (squash; fail/pending block; empty checks allow by default) |
 | `/ops-finish` · `ops-finish` | `openspec-ops finish` (wt + merged branch cleanup) |
 | `/ops-prune` · `ops-prune` | Deprecated; prefer finish |
@@ -388,7 +388,7 @@ Extension: `.pi/extensions/openspec-ops-guided.ts` (guided lifecycle).
 
 - **`/ops-start`** — manual worktree only  
 - **`/ops-next [change]`** — hard-coded next-step menu (`ctx.ui.select` or text; never auto-picks)
-- **`/ops-deliver <change>`** — batch start→finish after explore (reviews required; merge consent on invoke)  
+- **`/ops-deliver <change>`** — batch start→finish after explore (reviews required; merge consent on invoke); extension binds slash args then skill follow-up  
 - **`/ops-config`** — session max-rounds for reviews  
 
 **Removed:** auto-ensure on propose, auto-review settle fire, auto-finish, auto-impl-review after ship, intercept ensure-before-new-change.

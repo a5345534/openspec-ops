@@ -4,6 +4,7 @@
  * - /ops-config session settings
  * - /ops-start manual worktree (explicit only)
  * - /ops-next station menu (ui.select or text; user choice only)
+ * - /ops-deliver binds slash change name then skill follow-up (batch start→finish)
  * - before_agent_start: inject config + optional one-shot workspace handoff after /ops-start
  *
  * REMOVED: auto-ensure on propose, auto-review settle fire, auto-finish, auto-impl-review.
@@ -34,7 +35,10 @@ import {
   resolvePrSignals,
 } from "../../src/next-step/index.js";
 import { resolveOpsBin, runOps } from "../../src/ops-runtime/run-ops.js";
-import { CHANGE_NAME_RE } from "../../src/ops-runtime/change-name.js";
+import {
+  CHANGE_NAME_RE,
+  parseSlashChangeAndRest,
+} from "../../src/ops-runtime/change-name.js";
 import { resolvePackageRoot } from "../../src/package-root.js";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -285,6 +289,61 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(`Scheduled: ${opt.command}`, "info");
       } else {
         ctx.ui.notify(`Run manually: ${opt.command}`, "warning");
+      }
+    },
+  });
+
+  pi.registerCommand("ops-deliver", {
+    description:
+      "Batch start→finish after explore (reviews required; merge consent on invoke). Slash args bind change name.",
+    handler: async (args, ctx) => {
+      const rootsBase = [PACKAGE_ROOT, ctx.cwd].filter(Boolean) as string[];
+      let { change, rest } = parseSlashChangeAndRest(args);
+
+      if (!change) {
+        const candidates = listCandidateChanges(rootsBase);
+        if (candidates.length === 0) {
+          ctx.ui.notify(
+            "Usage: /ops-deliver <kebab-change> [objective]. No active candidates. Use /ops-start first or pass a name.",
+            "warning",
+          );
+          return;
+        }
+        if (candidates.length === 1) {
+          change = candidates[0]!;
+          ctx.ui.notify(`Using only candidate: ${change}`, "info");
+        } else if (!ctx.hasUI || typeof ctx.ui.select !== "function") {
+          ctx.ui.notify(
+            formatChangePickList(candidates) +
+              "\n\nRe-run: /ops-deliver <change>",
+            "info",
+          );
+          return;
+        } else {
+          const picked = await ctx.ui.select("Pick change for deliver", candidates);
+          if (!picked || !candidates.includes(picked)) {
+            ctx.ui.notify("Stopped. No change selected for deliver.", "info");
+            return;
+          }
+          change = picked;
+        }
+      }
+
+      const lines = [
+        `Run the ops-deliver skill for change \`${change}\` only.`,
+        `REQUIRED: change name is \`${change}\` (kebab-case). Do not claim the name is missing.`,
+        rest ? `Optional objective: ${rest}` : "",
+        "Follow .pi/skills/ops-deliver/SKILL.md until done or hard stop (mandatory reviews; merge consent already given by this invoke).",
+      ].filter(Boolean);
+
+      if (typeof pi.sendUserMessage === "function") {
+        pi.sendUserMessage(lines.join("\n"), { deliverAs: "followUp" });
+        ctx.ui.notify(`ops-deliver scheduled for ${change}`, "info");
+      } else {
+        ctx.ui.notify(
+          `No sendUserMessage — run ops-deliver for ${change} manually.\n${lines.join("\n")}`,
+          "warning",
+        );
       }
     },
   });

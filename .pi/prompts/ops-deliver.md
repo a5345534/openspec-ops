@@ -7,6 +7,8 @@ description: Start-to-finish lifecycle after explore; mandatory reviews; merge o
 
 After **explore is done**, run a change from **start through finish**.
 
+**Slash args:** the guided extension registers `ops-deliver` and binds the kebab change name into a follow-up before the skill runs.
+
 ```text
 start → propose → spec-review* → apply → ship → impl-review* → merge → archive → finish
 ```
