@@ -33,10 +33,19 @@ Running `/ops-deliver <change>` means the operator authorizes, when gates pass:
 - **Required:** kebab-case change name  
 - Optional: short objective text to seed propose  
 
+Slash **`/ops-deliver`** is registered on the guided extension: args are parsed and a follow-up message **binds** the change name so the agent must not claim it is missing.
+
 ```text
 /ops-deliver my-change
 /ops-deliver my-change "add dark mode toggle"
 ```
+
+### Resolving the change name (order)
+
+1. Extension-bound line: `change name is \`<name>\`` or `REQUIRED: change name is \`<name>\``  
+2. Explicit `change=<name>` in the message  
+3. First kebab token after `/ops-deliver` / `ops-deliver`  
+4. If still missing → stop and ask (do **not** invent a name)
 
 ## Pipeline (default order)
 
@@ -60,7 +69,7 @@ Code table: `defaultDeliverAction` / `deliverActionAfterReview` in `src/next-ste
 
 ## Steps (agent)
 
-1. Parse change name; if missing, stop and ask.  
+1. Resolve change name (see order above). If the message already binds a kebab name, **use it** — never stop with “name missing” when that binding is present.  
 2. Loop (max **20** transitions per invocation):  
    a. Build signals: `where`, roots, `resolvePrSignals` (open/merged PR).  
    b. `station = detectLifecycleStation(...)`.  
