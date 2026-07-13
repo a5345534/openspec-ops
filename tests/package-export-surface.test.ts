@@ -55,6 +55,14 @@ describe("package ops-only Pi surface", () => {
     expect(files.some((f) => f.includes("ops-deliver"))).toBe(true);
   });
 
+  it("files list includes ops-deliver skill but not deliver prompt", () => {
+    const pkg = loadPkg();
+    const files = pkg.files ?? [];
+    expect(files.some((f) => f.includes("ops-deliver"))).toBe(true);
+    // Slash /ops-deliver is extension-owned; no prompt template (avoids dual registration)
+    expect(files).not.toContain(".pi/prompts/ops-deliver.md");
+  });
+
   it("clean build does not leave dist/auto-ensure", () => {
     expect(existsSync(resolve(process.cwd(), "dist/auto-ensure"))).toBe(false);
   });

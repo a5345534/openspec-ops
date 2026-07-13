@@ -33,7 +33,9 @@ Running `/ops-deliver <change>` means the operator authorizes, when gates pass:
 - **Required:** kebab-case change name  
 - Optional: short objective text to seed propose  
 
-Slash **`/ops-deliver`** is registered on the guided extension: args are parsed and a follow-up message **binds** the change name so the agent must not claim it is missing.
+Slash **`/ops-deliver`** is registered **only** on the guided extension (no `.pi/prompts/ops-deliver.md` — avoids dual slash registration). Args are parsed and a follow-up **binds** the change name so the agent must not claim it is missing.
+
+This skill is agent-loaded (or `/skill:ops-deliver`); the slash entrypoint is the extension command.
 
 ```text
 /ops-deliver my-change

@@ -41,8 +41,7 @@
     ".pi/skills/ops-merge",
     ".pi/prompts/ops-merge.md",
     ".pi/skills/ops-next",
-    ".pi/skills/ops-deliver",
-    ".pi/prompts/ops-deliver.md"
+    ".pi/skills/ops-deliver"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
