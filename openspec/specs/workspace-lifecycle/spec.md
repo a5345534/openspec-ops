@@ -3,9 +3,7 @@
 ## Purpose
 
 Git worktree/branch lifecycle for an OpenSpec change name via the `openspec-ops` CLI, without modifying OpenSpec semantics.
-
 ## Requirements
-
 ### Requirement: CLI binary and command surface
 The system SHALL expose a command-line entrypoint named `openspec-ops` that supports exactly these Phase 0 subcommands: `start`, `where`, `finish`, and `doctor`.
 
@@ -355,7 +353,6 @@ Ship MUST resolve the target worktree using the same change name → path/branch
 - **AND** the user runs `openspec-ops ship <change> --json`
 - **THEN** the command fails with not_found (or equivalent) and does not create a worktree implicitly unless design explicitly adds ensure (v1: do not implicit start)
 
-
 ---
 
 ### Requirement: prune is a workspace lifecycle command
@@ -377,7 +374,6 @@ When no merged PR is verified, finish MUST retain the branch (`branchDeleted` fa
 #### Scenario: unmerged keeps branch
 - **WHEN** finish succeeds and no merged PR is verified
 - **THEN** the branch is retained
-
 
 ---
 
@@ -413,4 +409,26 @@ The `openspec-ops start` command SHALL accept an optional boolean flag `--init-s
 #### Scenario: help mentions the flag
 - **WHEN** a user runs `openspec-ops --help` or start help text is shown
 - **THEN** usage documents `--init-submodule-branches` (or equivalent wording)
+
+### Requirement: Doctor reports primary behind origin base
+Doctor SHALL, when local remote-tracking data is available, detect whether the primary worktree tip is strictly behind `origin/<base>` (repository default base branch) and report a stable issue id `primary_behind_origin` at **warning** severity with a hint to `git pull --ff-only` (or fetch then pull) on primary.
+
+Doctor MUST remain read-only (no fetch required for the check to run; missing remote-tracking refs MUST skip or omit this issue without failing the doctor command). Exit code remains `0` when only this class of issue is present.
+
+#### Scenario: primary behind yields warning issue
+- **WHEN** doctor runs
+- **AND** primary HEAD is a strict ancestor of `origin/<base>` with a non-zero behind count
+- **THEN** an issue with id `primary_behind_origin` and severity `warning` is present
+- **AND** the process exits with code `0`
+
+#### Scenario: missing remote-tracking does not fail doctor
+- **WHEN** doctor runs
+- **AND** `origin/<base>` cannot be resolved locally
+- **THEN** doctor still completes successfully
+- **AND** does not require emitting `primary_behind_origin` solely due to missing remote data
+
+#### Scenario: primary up to date omits behind issue
+- **WHEN** doctor runs
+- **AND** primary tip equals `origin/<base>`
+- **THEN** doctor does not report `primary_behind_origin`
 
