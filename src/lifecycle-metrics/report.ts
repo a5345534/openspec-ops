@@ -45,6 +45,8 @@ export type DeliverAggregate = {
 export type MetricsReport = {
   records: number;
   malformedLines: number;
+  source: "jsonl" | "sqlite";
+  projection: { rows: number; lastSyncAt: number | null } | null;
   filters: { change?: string };
   usage: {
     total: UsageAggregate;
@@ -217,7 +219,12 @@ function aggregateDeliver(
 
 export function buildMetricsReport(
   allRecords: MetricsRecord[],
-  options: { change?: string; malformedLines?: number } = {},
+  options: {
+    change?: string;
+    malformedLines?: number;
+    source?: "jsonl" | "sqlite";
+    projection?: { rows: number; lastSyncAt: number | null };
+  } = {},
 ): MetricsReport {
   const records = options.change
     ? allRecords.filter((record) =>
@@ -254,6 +261,8 @@ export function buildMetricsReport(
   return {
     records: records.length,
     malformedLines: options.malformedLines ?? 0,
+    source: options.source ?? "jsonl",
+    projection: options.projection ?? null,
     filters: options.change ? { change: options.change } : {},
     usage: {
       total,
@@ -279,10 +288,20 @@ function tokens(value: number): string {
 export function formatMetricsReport(report: MetricsReport): string {
   const lines: string[] = [
     `openspec-ops lifecycle metrics${report.filters.change ? ` — ${report.filters.change}` : ""}`,
+  ];
+  if (report.source === "sqlite") {
+    const synced = report.projection?.lastSyncAt == null
+      ? "never"
+      : new Date(report.projection.lastSyncAt).toISOString();
+    lines.push(
+      `Source: SQLite projection; rows: ${report.projection?.rows ?? report.records}; last sync: ${synced}`,
+    );
+  }
+  lines.push(
     "",
     "A. Model / cost / cache by action",
     "action | turns | input | output | cache-read | cost",
-  ];
+  );
   const actions = Object.entries(report.usage.byAction).sort(
     (a, b) => b[1].cost - a[1].cost,
   );

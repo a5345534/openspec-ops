@@ -12,7 +12,7 @@ import {
   type ReviewRoundMetricRecord,
   type TurnMetricRecord,
 } from "./types.js";
-import { createAttemptId } from "./storage.js";
+import { createAttemptId, createMetricsRecordId } from "./storage.js";
 
 export type TurnInput = {
   text: string;
@@ -26,10 +26,12 @@ export type TurnInput = {
 
 export type RuntimeOptions = {
   sessionIdHash: string;
+  workspaceId?: string | null | (() => string | null);
   enabled: () => boolean;
   append: (record: MetricsRecord) => void;
   now?: () => number;
   createId?: () => string;
+  createRecordId?: () => string;
   onError?: (error: unknown) => void;
 };
 
@@ -64,6 +66,8 @@ export class LifecycleMetricsRuntime {
   };
   private attempt: AttemptState | null = null;
   private reviewResultSeenForContext = false;
+  private workspaceResolved = false;
+  private resolvedWorkspaceId: string | null = null;
   private readonly options: RuntimeOptions;
 
   constructor(options: RuntimeOptions) {
@@ -84,6 +88,30 @@ export class LifecycleMetricsRuntime {
 
   private now(): number {
     return (this.options.now ?? Date.now)();
+  }
+
+  private workspaceId(): string | null {
+    if (this.workspaceResolved) return this.resolvedWorkspaceId;
+    this.workspaceResolved = true;
+    try {
+      this.resolvedWorkspaceId =
+        typeof this.options.workspaceId === "function"
+          ? this.options.workspaceId()
+          : (this.options.workspaceId ?? null);
+    } catch {
+      this.resolvedWorkspaceId = null;
+    }
+    return this.resolvedWorkspaceId;
+  }
+
+  private baseRecord() {
+    return {
+      schemaVersion: METRICS_SCHEMA_VERSION,
+      recordId: (this.options.createRecordId ?? createMetricsRecordId)(),
+      workspaceId: this.workspaceId(),
+      timestamp: this.now(),
+      sessionIdHash: this.options.sessionIdHash,
+    } as const;
   }
 
   private append(record: MetricsRecord): void {
@@ -112,10 +140,8 @@ export class LifecycleMetricsRuntime {
     const reviewType = reviewTypeForAction(this.context.action);
     if (!reviewType) return;
     const record: ReviewRoundMetricRecord = {
-      schemaVersion: METRICS_SCHEMA_VERSION,
+      ...this.baseRecord(),
       kind: "review_round",
-      timestamp: this.now(),
-      sessionIdHash: this.options.sessionIdHash,
       change: this.context.change,
       deliveryAttemptId: this.activeAttemptId,
       reviewType,
@@ -164,11 +190,9 @@ export class LifecycleMetricsRuntime {
     };
     this.setAction(change, "ops-deliver-overhead", "observed", null);
     const record: DeliverAttemptMetricRecord = {
-      schemaVersion: METRICS_SCHEMA_VERSION,
+      ...this.baseRecord(),
       kind: "deliver_attempt",
       event: "start",
-      timestamp: this.now(),
-      sessionIdHash: this.options.sessionIdHash,
       attemptId,
       change,
       resume,
@@ -201,10 +225,8 @@ export class LifecycleMetricsRuntime {
         marker.reviewType === "spec" ? "ops-spec-review" : "ops-impl-review";
       this.setAction(marker.change, action, "declared", marker.round);
       const record: ReviewRoundMetricRecord = {
-        schemaVersion: METRICS_SCHEMA_VERSION,
+        ...this.baseRecord(),
         kind: "review_round",
-        timestamp: this.now(),
-        sessionIdHash: this.options.sessionIdHash,
         change: marker.change,
         deliveryAttemptId: this.activeAttemptId,
         reviewType: marker.reviewType,
@@ -235,10 +257,8 @@ export class LifecycleMetricsRuntime {
     }
 
     const record: TurnMetricRecord = {
-      schemaVersion: METRICS_SCHEMA_VERSION,
+      ...this.baseRecord(),
       kind: "turn",
-      timestamp: this.now(),
-      sessionIdHash: this.options.sessionIdHash,
       change: this.context.change,
       deliveryAttemptId: this.activeAttemptId,
       action: this.context.action,
@@ -279,11 +299,9 @@ export class LifecycleMetricsRuntime {
     else if (attempt.lastError) outcome = "hard_stop";
 
     const record: DeliverAttemptMetricRecord = {
-      schemaVersion: METRICS_SCHEMA_VERSION,
+      ...this.baseRecord(),
       kind: "deliver_attempt",
       event: "settled",
-      timestamp: this.now(),
-      sessionIdHash: this.options.sessionIdHash,
       attemptId: attempt.attemptId,
       change: attempt.change,
       resume: attempt.resume,

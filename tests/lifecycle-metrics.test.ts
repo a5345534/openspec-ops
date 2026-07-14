@@ -52,7 +52,13 @@ const usage = (cost = 1): RawUsage => ({
   },
 });
 
-const base = { schemaVersion: METRICS_SCHEMA_VERSION, sessionIdHash: "abc", timestamp: 1 } as const;
+const base = {
+  schemaVersion: METRICS_SCHEMA_VERSION,
+  recordId: "test-record",
+  workspaceId: null,
+  sessionIdHash: "abc",
+  timestamp: 1,
+} as const;
 
 function turn(
   action: TurnMetricRecord["action"],
@@ -454,5 +460,21 @@ describe("mechanical lifecycle recognition", () => {
     );
     expect(block).not.toContain("resolvePrSignals");
     expect(block).not.toContain("gh ");
+  });
+
+  it("keeps metrics and SQLite commands operator-direct with no model or network path", () => {
+    const source = readFileSync(
+      join(process.cwd(), ".pi/extensions/openspec-ops-guided.ts"),
+      "utf8",
+    );
+    const block = source.slice(
+      source.indexOf('pi.registerCommand("ops-metrics"'),
+      source.indexOf('pi.registerCommand("ops-next"'),
+    );
+    expect(block).toContain('dbSub === "sync"');
+    expect(block).toContain('source: "sqlite"');
+    expect(block).not.toContain("sendUserMessage");
+    expect(block).not.toContain("fetch(");
+    expect(block).not.toContain("resolvePrSignals");
   });
 });

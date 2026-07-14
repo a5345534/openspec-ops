@@ -1,4 +1,5 @@
 export {
+  LEGACY_METRICS_SCHEMA_VERSION,
   METRICS_SCHEMA_VERSION,
   METRICS_ACTIONS,
   type ActiveMetricsContext,
@@ -24,6 +25,7 @@ export {
 export {
   appendMetricsRecord,
   createAttemptId,
+  createMetricsRecordId,
   hashSessionId,
   metricsConfigPath,
   metricsDataDir,
@@ -33,9 +35,31 @@ export {
   resetMetricsData,
   sessionMetricsPath,
   setMetricsEnabled,
+  setMetricsSqlitePath,
   writeMetricsConfig,
+  parseMetricsRecordValue,
   type MetricsConfig,
+  type MetricsReadResult,
 } from "./storage.js";
+export {
+  hashWorkspaceRoot,
+  resolveWorkspaceId,
+} from "./identity.js";
+export {
+  MetricsSqliteError,
+  defaultMetricsSqlitePath,
+  destroyMetricsSqlite,
+  detachMetricsSqlite,
+  getMetricsSqliteStatus,
+  initMetricsSqlite,
+  readMetricsSqlite,
+  rebuildMetricsSqlite,
+  syncMetricsSqlite,
+  type MetricsSqliteReadResult,
+  type MetricsSqliteStatus,
+  type MetricsSqliteSyncResult,
+  type SqliteLoader,
+} from "./sqlite.js";
 export {
   buildMetricsReport,
   formatMetricsReport,
