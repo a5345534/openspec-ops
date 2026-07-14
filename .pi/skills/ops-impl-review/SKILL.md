@@ -25,6 +25,12 @@ Runs **after** `openspec-ops ship` / `/ops-ship` and **before** human merge.
 2. Prefer PR context: `gh pr view` / `gh pr diff` for head = change branch; else `git diff` vs base (`main` / origin default).
 3. Loop up to **max full-review rounds** (config below). **One round = one full review.**
 
+   At the start of each full round, emit this hidden metadata-only comment (exact compact JSON):
+
+   ```text
+   <!-- ops-metrics:stage {"change":"<change>","action":"ops-impl-review","round":<N>} -->
+   ```
+
    **Each full review MUST:**
    - Read relevant **specs** + **tasks.md**
    - Review **current** implementation / diff for alignment with requirements/scenarios (whole change state—not only files from the previous fix list; prior majors MAY be extra checks, not a scope ceiling)
@@ -45,6 +51,20 @@ Runs **after** `openspec-ops ship` / `/ops-ship` and **before** human merge.
 
 **Minor alone does not force another full review round.** Uncertain → minor.
 
+### Metrics result marker (every full round)
+
+At the end of **each** full review round, emit one hidden comment with counts only (no finding prose):
+
+```text
+<!-- ops-metrics:review {"change":"<change>","reviewType":"impl","round":<N>,"newMajors":<int>,"newMinors":<int>,"majorsFixed":<int>,"fixVerificationPassed":<bool>,"verdict":"continue|ready|needs_human"} -->
+```
+
+- `continue`: majors were handled/pushed/in-round verified and another full round will run.
+- `ready`: the full review found zero majors.
+- `needs_human`: round budget ended with majors or pending confirmatory full review.
+- `fixVerificationPassed=true` when no fixes were needed or required fixes verified; false when verification failed/pending.
+- Marker is harmless when local metrics are disabled. Never call a telemetry tool/model; never put finding text, prompt/source/tool content, or errors in it.
+
 ### Major checklist (examples)
 
 - Main scenario not implemented
@@ -64,6 +84,7 @@ Runs **after** `openspec-ops ship` / `/ops-ship` and **before** human merge.
 Round 1 (full review)
   Majors: …
   In-round fix+push+verify: none | cleared | failed
+  Metrics: emit one structured review marker
 Round 2 (full review)   # only if needed after fixes
   Majors: none
 Rounds used: k / max   # full reviews only
