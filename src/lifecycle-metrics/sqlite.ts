@@ -1,8 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
   chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   rmSync,
   statSync,
 } from "node:fs";
@@ -307,15 +309,35 @@ export async function initMetricsSqlite(
     );
   }
   const normalized = resolve(path);
-  const existed = existsSync(normalized);
-  if (existed && !statSync(normalized).isFile()) {
+  if (normalized.endsWith(".jsonl")) {
     throw new MetricsSqliteError(
-      "sqlite_path_invalid",
-      `SQLite metrics path is not a file: ${normalized}`,
+      "sqlite_path_conflicts_jsonl",
+      "SQLite metrics path must not use the reserved .jsonl suffix",
     );
   }
 
-  if (existed) {
+  mkdirSync(dirname(normalized), { recursive: true });
+  let claimed = false;
+  try {
+    const fd = openSync(normalized, "wx", 0o600);
+    closeSync(fd);
+    claimed = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw new MetricsSqliteError(
+        "sqlite_init_failed",
+        `Cannot reserve metrics database path: ${message(error)}`,
+      );
+    }
+  }
+
+  if (!claimed) {
+    if (!statSync(normalized).isFile()) {
+      throw new MetricsSqliteError(
+        "sqlite_path_invalid",
+        `SQLite metrics path is not a file: ${normalized}`,
+      );
+    }
     let existing: DatabaseSync | null = null;
     try {
       existing = openCompatible(module, normalized, false);
@@ -323,7 +345,6 @@ export async function initMetricsSqlite(
       existing?.close();
     }
   } else {
-    mkdirSync(dirname(normalized), { recursive: true });
     let db: DatabaseSync | null = null;
     try {
       db = new module.DatabaseSync(normalized);
@@ -337,6 +358,8 @@ export async function initMetricsSqlite(
       } catch {
         // Preserve initialization error.
       }
+      // The atomic wx claim proves this invocation owns the placeholder, so
+      // cleanup cannot remove a database initialized by a competing process.
       rmSync(normalized, { force: true });
       rmSync(`${normalized}-wal`, { force: true });
       rmSync(`${normalized}-shm`, { force: true });

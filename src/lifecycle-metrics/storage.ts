@@ -306,6 +306,7 @@ export function readMetricsRecords(agentDir: string): MetricsReadResult {
     return { records: [], malformedLines: 0, legacyRecords: 0, files: 0 };
   }
   const records: MetricsRecord[] = [];
+  const protectedSqlitePath = readMetricsConfig(agentDir).sqlitePath;
   let malformedLines = 0;
   let legacyRecords = 0;
   let files = 0;
@@ -318,10 +319,17 @@ export function readMetricsRecords(agentDir: string): MetricsReadResult {
     return { records, malformedLines: 1, legacyRecords, files };
   }
   for (const name of entries) {
+    const path = join(dir, name);
+    if (
+      protectedSqlitePath &&
+      resolvePath(protectedSqlitePath) === resolvePath(path)
+    ) {
+      continue;
+    }
     files += 1;
     let text = "";
     try {
-      text = readFileSync(join(dir, name), "utf8");
+      text = readFileSync(path, "utf8");
     } catch {
       malformedLines += 1;
       continue;

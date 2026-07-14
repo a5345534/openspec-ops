@@ -460,7 +460,7 @@ JSONL remains the append-only source of truth. SQLite is never created or writte
 /ops-metrics db destroy confirm                   # deletes only compatible configured DB + sidecars
 ```
 
-A runtime without `node:sqlite` reports the DB feature unavailable while JSONL collection/reporting continues. SQLite configuration is independent from metrics on/off; JSON reset never modifies the database, and detach/destroy never modifies JSONL. Use a local filesystem—concurrent direct writes to one SQLite file over NFS/SMB/cloud-synced folders are unsupported. The projection makes no network or model call and DB failures cannot block lifecycle work.
+A runtime without `node:sqlite` reports the DB feature unavailable while JSONL collection/reporting continues. SQLite configuration is independent from metrics on/off; JSON reset never modifies the database, and detach/destroy never modifies JSONL. The reserved `.jsonl` suffix is rejected for database paths so a projection cannot collide with session source files. Use a local filesystem—concurrent direct writes to one SQLite file over NFS/SMB/cloud-synced folders are unsupported. The projection makes no network or model call and DB failures cannot block lifecycle work.
 
 Reports answer:
 

@@ -283,6 +283,10 @@ describe("optional SQLite metrics projection", () => {
       await expect(initMetricsSqlite(agentDir, "relative.db")).rejects.toMatchObject({
         code: "sqlite_path_not_absolute",
       });
+      await expect(
+        initMetricsSqlite(agentDir, join(agentDir, "reserved.jsonl")),
+      ).rejects.toMatchObject({ code: "sqlite_path_conflicts_jsonl" });
+      expect(existsSync(join(agentDir, "reserved.jsonl"))).toBe(false);
       writeFileSync(incompatible, "not a sqlite database");
       await expect(initMetricsSqlite(agentDir, incompatible)).rejects.toMatchObject({
         code: "sqlite_open_failed",
@@ -324,11 +328,13 @@ describe("optional SQLite metrics projection", () => {
       appendMetricsRecord(agentDir, turn("kept-json"));
       const status = await initMetricsSqlite(agentDir);
       const path = status.path!;
+      await syncMetricsSqlite(agentDir);
       expect(detachMetricsSqlite(agentDir)).toBe(path);
       expect(existsSync(path)).toBe(true);
       expect(readMetricsConfig(agentDir)).toEqual({ enabled: true });
 
       await initMetricsSqlite(agentDir, path);
+      expect((await readMetricsSqlite(agentDir)).records).toHaveLength(1);
       await expect(destroyMetricsSqlite(agentDir, false)).rejects.toMatchObject({
         code: "sqlite_confirmation_required",
       });
