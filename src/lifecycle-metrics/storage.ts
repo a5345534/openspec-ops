@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, resolve as resolvePath } from "node:path";
 import {
   LEGACY_METRICS_SCHEMA_VERSION,
   METRICS_ACTIONS,
@@ -344,5 +344,18 @@ export function readMetricsRecords(agentDir: string): MetricsReadResult {
 }
 
 export function resetMetricsData(agentDir: string): void {
-  rmSync(metricsDataDir(agentDir), { recursive: true, force: true });
+  const dir = metricsDataDir(agentDir);
+  if (!existsSync(dir)) return;
+  const protectedSqlitePath = readMetricsConfig(agentDir).sqlitePath;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith(".jsonl")) continue;
+    const path = join(dir, name);
+    if (
+      protectedSqlitePath &&
+      resolvePath(protectedSqlitePath) === resolvePath(path)
+    ) {
+      continue;
+    }
+    rmSync(path, { force: true });
+  }
 }

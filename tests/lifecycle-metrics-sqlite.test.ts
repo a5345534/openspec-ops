@@ -236,6 +236,25 @@ describe("optional SQLite metrics projection", () => {
     }
   });
 
+  it("keeps a configured DB inside the metrics directory during JSON reset", async () => {
+    const agentDir = tempAgent();
+    const path = join(metricsDataDir(agentDir), "projection.sqlite3");
+    try {
+      appendMetricsRecord(agentDir, turn("inside-metrics-dir"));
+      await initMetricsSqlite(agentDir, path);
+      await syncMetricsSqlite(agentDir);
+
+      resetMetricsData(agentDir);
+      expect(existsSync(path)).toBe(true);
+      expect(readMetricsRecords(agentDir).records).toEqual([]);
+      expect((await readMetricsSqlite(agentDir)).records.map((r) => r.recordId)).toEqual([
+        "inside-metrics-dir",
+      ]);
+    } finally {
+      rmSync(agentDir, { recursive: true, force: true });
+    }
+  });
+
   it("ingests legacy records once and reports legacy/malformed counts", async () => {
     const agentDir = tempAgent();
     try {
@@ -301,12 +320,13 @@ describe("optional SQLite metrics projection", () => {
   it("detaches without deleting and destroys only after confirmation", async () => {
     const agentDir = tempAgent();
     try {
+      setMetricsEnabled(agentDir, true);
       appendMetricsRecord(agentDir, turn("kept-json"));
       const status = await initMetricsSqlite(agentDir);
       const path = status.path!;
       expect(detachMetricsSqlite(agentDir)).toBe(path);
       expect(existsSync(path)).toBe(true);
-      expect(readMetricsConfig(agentDir).sqlitePath).toBeUndefined();
+      expect(readMetricsConfig(agentDir)).toEqual({ enabled: true });
 
       await initMetricsSqlite(agentDir, path);
       await expect(destroyMetricsSqlite(agentDir, false)).rejects.toMatchObject({
@@ -315,7 +335,7 @@ describe("optional SQLite metrics projection", () => {
       expect(existsSync(path)).toBe(true);
       expect((await destroyMetricsSqlite(agentDir, true)).deleted).toBe(true);
       expect(existsSync(path)).toBe(false);
-      expect(readMetricsConfig(agentDir).sqlitePath).toBeUndefined();
+      expect(readMetricsConfig(agentDir)).toEqual({ enabled: true });
       expect(readMetricsRecords(agentDir).records).toHaveLength(1);
     } finally {
       rmSync(agentDir, { recursive: true, force: true });
