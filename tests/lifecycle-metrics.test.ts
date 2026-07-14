@@ -276,7 +276,8 @@ describe("lifecycle metrics reports", () => {
     expect(report.deliver.firstInvocationCompletionRate).toBe(0);
     expect(report.deliver.resumes).toBe(1);
     expect(report.deliver.hardStopDistribution["ops-impl-review:tests_failed"]).toBe(1);
-    expect(hasPriorUnsuccessfulAttempt(records, "demo-change")).toBe(true);
+    expect(hasPriorUnsuccessfulAttempt(records, "demo-change")).toBe(false);
+    expect(hasPriorUnsuccessfulAttempt(records.slice(0, 2), "demo-change")).toBe(true);
   });
 });
 
@@ -316,7 +317,7 @@ describe("lifecycle metrics runtime", () => {
       context: null,
     });
     runtime.noteActionResult("ops-finish", true);
-    runtime.settleAgent("done");
+    runtime.settleAgent("unknown");
     const turnRecord = records.find((r): r is TurnMetricRecord => r.kind === "turn");
     expect(turnRecord?.action).toBe("ops-spec-review");
     expect(turnRecord?.attribution).toBe("declared");
@@ -326,6 +327,7 @@ describe("lifecycle metrics runtime", () => {
         r.kind === "deliver_attempt" && r.event === "settled",
     );
     expect(end?.outcome).toBe("completed");
+    expect(end?.endStation).toBe("done");
   });
 
   it("records missing review summary instead of inferring", () => {
@@ -371,17 +373,39 @@ describe("mechanical lifecycle recognition", () => {
     expect(parseLifecycleSlash("/ops-ship demo-change")?.action).toBe("ops-ship");
     expect(parseLifecycleSlash("/ops-ship Not_Good")).toBeNull();
     expect(actionFromShellCommand("./bin/openspec-ops finish demo-change --json")).toBe("ops-finish");
+    expect(
+      actionFromShellCommand(
+        "/opt/openspec-ops/bin/openspec-ops ship demo-change --json",
+      ),
+    ).toBe("ops-ship");
     expect(actionFromShellCommand("echo hi")).toBeNull();
-    expect(changeFromShellCommand("openspec-ops ship demo-change --json")).toBe("demo-change");
+    expect(
+      changeFromShellCommand(
+        "/opt/openspec-ops/bin/openspec-ops ship demo-change --json",
+      ),
+    ).toBe("demo-change");
   });
 
   it("extracts stable JSON envelope outcome without storing prose", () => {
     expect(parseJsonEnvelope('{"schemaVersion":1,"ok":true}')).toEqual({ ok: true });
     expect(
       parseJsonEnvelope(
-        'log\n{"schemaVersion":1,"ok":false,"error":{"code":"checks_failed","message":"secret"}}',
+        'log\n{"schemaVersion":1,"ok":false,"error":{"code":"checks_failed","message":"secret"}}\ntrailing shell output',
       ),
     ).toEqual({ ok: false, errorCode: "checks_failed" });
     expect(parseJsonEnvelope("not json")).toBeNull();
+  });
+
+  it("keeps metrics station probing local-only", () => {
+    const source = readFileSync(
+      join(process.cwd(), ".pi/extensions/openspec-ops-guided.ts"),
+      "utf8",
+    );
+    const block = source.slice(
+      source.indexOf("function localStationForMetrics"),
+      source.indexOf("function textContent"),
+    );
+    expect(block).not.toContain("resolvePrSignals");
+    expect(block).not.toContain("gh ");
   });
 });

@@ -100,6 +100,14 @@ function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function nonNegative(value: unknown): value is number {
+  return finite(value) && value >= 0;
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return nonNegative(value) && Number.isInteger(value);
+}
+
 const ACTIONS = new Set<string>(METRICS_ACTIONS);
 const STATIONS = new Set([
   "no_workspace",
@@ -116,17 +124,17 @@ const STATIONS = new Set([
 function validUsage(value: unknown): boolean {
   if (!object(value) || !object(value.cost)) return false;
   return (
-    finite(value.input) &&
-    finite(value.output) &&
-    finite(value.cacheRead) &&
-    finite(value.cacheWrite) &&
-    finite(value.totalTokens) &&
-    (value.reasoning == null || finite(value.reasoning)) &&
-    finite(value.cost.input) &&
-    finite(value.cost.output) &&
-    finite(value.cost.cacheRead) &&
-    finite(value.cost.cacheWrite) &&
-    finite(value.cost.total)
+    nonNegative(value.input) &&
+    nonNegative(value.output) &&
+    nonNegative(value.cacheRead) &&
+    nonNegative(value.cacheWrite) &&
+    nonNegative(value.totalTokens) &&
+    (value.reasoning == null || nonNegative(value.reasoning)) &&
+    nonNegative(value.cost.input) &&
+    nonNegative(value.cost.output) &&
+    nonNegative(value.cost.cacheRead) &&
+    nonNegative(value.cost.cacheWrite) &&
+    nonNegative(value.cost.total)
   );
 }
 
@@ -145,7 +153,8 @@ function looksLikeRecord(value: unknown): value is MetricsRecord {
       (value.attribution === "observed" ||
         value.attribution === "declared" ||
         value.attribution === "unknown") &&
-      (value.reviewRound == null || finite(value.reviewRound)) &&
+      (value.reviewRound == null ||
+        (nonNegativeInteger(value.reviewRound) && value.reviewRound >= 1 && value.reviewRound <= 10)) &&
       object(value.model) &&
       typeof value.model.provider === "string" &&
       typeof value.model.id === "string" &&
@@ -162,12 +171,14 @@ function looksLikeRecord(value: unknown): value is MetricsRecord {
       typeof value.change === "string" &&
       (value.deliveryAttemptId == null || typeof value.deliveryAttemptId === "string") &&
       (value.reviewType === "spec" || value.reviewType === "impl") &&
-      finite(value.round) &&
+      nonNegativeInteger(value.round) &&
+      value.round >= 1 &&
+      value.round <= 10 &&
       typeof value.missing === "boolean" &&
       (value.missing ||
-        (finite(value.newMajors) &&
-          finite(value.newMinors) &&
-          finite(value.majorsFixed) &&
+        (nonNegativeInteger(value.newMajors) &&
+          nonNegativeInteger(value.newMinors) &&
+          nonNegativeInteger(value.majorsFixed) &&
           typeof value.fixVerificationPassed === "boolean" &&
           (value.verdict === "continue" ||
             value.verdict === "ready" ||

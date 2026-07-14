@@ -72,7 +72,7 @@ This records the reviewer model's existing judgment; it is not an additional eva
 
 ### 7. Deliver attempts settle mechanically
 
-`/ops-deliver` creates an attempt id and captures start station. At `agent_settled`, finish success marks completed; a review `needs_human` marks needs-human; the most recent stable CLI error marks hard-stop; otherwise the attempt is incomplete. A later invocation for the same change is marked resume when an earlier incomplete/hard-stop attempt exists.
+`/ops-deliver` creates an attempt id and captures a **local-only** start station. Metrics never query GitHub/PR APIs: states that cannot be distinguished locally (`applied` vs `shipped` vs `merged`) remain `unknown`. At `agent_settled`, finish success marks completed/done; a review `needs_human` marks needs-human; the most recent stable CLI error marks hard-stop; otherwise the attempt is incomplete. A later invocation for the same change is marked resume when the latest settled attempt was incomplete/hard-stop/needs-human.
 
 ### 8. Reports target A+B+C only
 

@@ -79,11 +79,13 @@ function firstKebab(args: string | undefined): string | null {
   return first && CHANGE_NAME_RE.test(first) ? first : null;
 }
 
-function stationForMetrics(change: string, cwd: string): LifecycleStation {
+/**
+ * Metrics must not trigger PR/network lookups. Return a locally provable station;
+ * states that require PR knowledge (applied vs shipped vs merged) stay unknown.
+ */
+function localStationForMetrics(change: string, cwd: string): LifecycleStation {
   const roots = [PACKAGE_ROOT, cwd].filter(Boolean);
   let worktreeFound = false;
-  let branch = change;
-  let prCwd = cwd || PACKAGE_ROOT;
   const bin = resolveOpsBin({ projectRoot: PACKAGE_ROOT });
   if (bin) {
     const where = runOps(bin, ["where", change], { cwd });
@@ -91,23 +93,18 @@ function stationForMetrics(change: string, cwd: string): LifecycleStation {
       const wr = where.json.result;
       worktreeFound = Boolean(wr.found);
       if (wr.path) roots.push(String(wr.path));
-      if (wr.primaryPath) {
-        roots.push(String(wr.primaryPath));
-        prCwd = String(wr.primaryPath);
-      } else if (wr.path) {
-        prCwd = String(wr.path);
-      }
-      if (wr.branch) branch = String(wr.branch);
+      if (wr.primaryPath) roots.push(String(wr.primaryPath));
     }
   }
-  const pr = resolvePrSignals(prCwd, branch);
-  return detectLifecycleStation({
+  const local = detectLifecycleStation({
     change,
     roots: [...new Set(roots)],
     worktreeFound,
-    hasOpenPr: pr.hasOpenPr,
-    hasMergedPr: pr.hasMergedPr,
+    hasOpenPr: false,
+    hasMergedPr: false,
   });
+  // Locally "applied" is ambiguous once a PR exists/merges; do not guess.
+  return local === "applied" ? "unknown" : local;
 }
 
 function textContent(content: Array<{ type: string; text?: string }>): string {
@@ -232,7 +229,7 @@ export default function (pi: ExtensionAPI) {
     let station: LifecycleStation = "unknown";
     if (change) {
       try {
-        station = stationForMetrics(change, ctx.cwd);
+        station = localStationForMetrics(change, ctx.cwd);
       } catch {
         station = "unknown";
       }
@@ -621,7 +618,7 @@ export default function (pi: ExtensionAPI) {
           const prior = readMetricsRecords(metricsAgentDir).records;
           ensureMetrics(ctx).beginDeliver(
             change,
-            stationForMetrics(change, ctx.cwd),
+            localStationForMetrics(change, ctx.cwd),
             hasPriorUnsuccessfulAttempt(prior, change),
           );
         } catch {
@@ -641,7 +638,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(`ops-deliver scheduled for ${change}`, "info");
       } else {
         try {
-          metricsRuntime?.settleDeliver(stationForMetrics(change, ctx.cwd));
+          metricsRuntime?.settleDeliver(localStationForMetrics(change, ctx.cwd));
         } catch {
           metricsRuntime?.settleDeliver("unknown");
         }

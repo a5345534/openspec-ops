@@ -262,8 +262,10 @@ export class LifecycleMetricsRuntime {
   settleDeliver(endStation: LifecycleStation): void {
     if (!this.attempt) return;
     const attempt = this.attempt;
+    const settledStation: LifecycleStation =
+      attempt.finishSucceeded && endStation === "unknown" ? "done" : endStation;
     let outcome: DeliverAttemptMetricRecord["outcome"] = "incomplete";
-    if (endStation === "done" || attempt.finishSucceeded) outcome = "completed";
+    if (settledStation === "done" || attempt.finishSucceeded) outcome = "completed";
     else if (attempt.needsHuman) outcome = "needs_human";
     else if (attempt.lastError) outcome = "hard_stop";
 
@@ -277,7 +279,7 @@ export class LifecycleMetricsRuntime {
       change: attempt.change,
       resume: attempt.resume,
       startStation: attempt.startStation,
-      endStation,
+      endStation: settledStation,
       outcome,
       hardStopAction: attempt.lastError?.action ?? null,
       errorCode: attempt.lastError?.code ?? null,
@@ -314,10 +316,10 @@ export function parseLifecycleSlash(text: string): {
 }
 
 const SHELL_ACTIONS: Array<[RegExp, MetricsAction]> = [
-  [/(?:^|[\n;&|]\s*)(?:\.\/bin\/)?openspec-ops\s+start\s+/, "ops-start"],
-  [/(?:^|[\n;&|]\s*)(?:\.\/bin\/)?openspec-ops\s+ship\s+/, "ops-ship"],
-  [/(?:^|[\n;&|]\s*)(?:\.\/bin\/)?openspec-ops\s+merge\s+/, "ops-merge"],
-  [/(?:^|[\n;&|]\s*)(?:\.\/bin\/)?openspec-ops\s+finish\s+/, "ops-finish"],
+  [/(?:^|[\n;&|]\s*)(?:[^\s;&|]*\/)?openspec-ops\s+start\s+/, "ops-start"],
+  [/(?:^|[\n;&|]\s*)(?:[^\s;&|]*\/)?openspec-ops\s+ship\s+/, "ops-ship"],
+  [/(?:^|[\n;&|]\s*)(?:[^\s;&|]*\/)?openspec-ops\s+merge\s+/, "ops-merge"],
+  [/(?:^|[\n;&|]\s*)(?:[^\s;&|]*\/)?openspec-ops\s+finish\s+/, "ops-finish"],
   [/(?:^|[\n;&|]\s*)openspec\s+(?:new\s+change|new\s+)\s*/, "opsx-propose"],
   [/(?:^|[\n;&|]\s*)openspec\s+archive\s+/, "opsx-archive"],
 ];
@@ -332,7 +334,7 @@ export function actionFromShellCommand(command: string): MetricsAction | null {
 export function changeFromShellCommand(command: string): string | null {
   const text = String(command ?? "");
   const patterns = [
-    /(?:\.\/bin\/)?openspec-ops\s+(?:start|ship|merge|finish)\s+["']?([a-z0-9]+(?:-[a-z0-9]+)*)["']?/,
+    /(?:[^\s;&|]*\/)?openspec-ops\s+(?:start|ship|merge|finish)\s+["']?([a-z0-9]+(?:-[a-z0-9]+)*)["']?/,
     /openspec\s+new\s+change\s+["']?([a-z0-9]+(?:-[a-z0-9]+)*)["']?/,
     /openspec\s+archive\s+["']?([a-z0-9]+(?:-[a-z0-9]+)*)["']?/,
   ];
@@ -343,15 +345,42 @@ export function changeFromShellCommand(command: string): string | null {
   return null;
 }
 
+function jsonObjectCandidates(text: string): string[] {
+  const result: string[] = [];
+  for (let start = 0; start < text.length; start += 1) {
+    if (text[start] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < text.length; i += 1) {
+      const char = text[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') inString = false;
+        continue;
+      }
+      if (char === '"') inString = true;
+      else if (char === "{") depth += 1;
+      else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          result.push(text.slice(start, i + 1));
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 export function parseJsonEnvelope(text: string): {
   ok: boolean;
   errorCode?: string;
 } | null {
-  const trimmed = String(text ?? "").trim();
-  const starts = [...trimmed.matchAll(/\{/g)].map((m) => m.index ?? 0);
-  for (const start of starts) {
+  for (const candidate of jsonObjectCandidates(String(text ?? ""))) {
     try {
-      const value: unknown = JSON.parse(trimmed.slice(start));
+      const value: unknown = JSON.parse(candidate);
       if (!value || typeof value !== "object" || Array.isArray(value)) continue;
       const obj = value as Record<string, unknown>;
       if (typeof obj.ok !== "boolean") continue;
@@ -362,7 +391,7 @@ export function parseJsonEnvelope(text: string): {
       }
       return { ok: obj.ok, ...(errorCode ? { errorCode } : {}) };
     } catch {
-      // Try the next opening brace.
+      // Try the next balanced object.
     }
   }
   return null;
@@ -372,11 +401,13 @@ export function hasPriorUnsuccessfulAttempt(
   records: MetricsRecord[],
   change: string,
 ): boolean {
-  const outcomes = records.filter(
-    (record): record is DeliverAttemptMetricRecord =>
-      record.kind === "deliver_attempt" &&
-      record.event === "settled" &&
-      record.change === change,
-  );
-  return outcomes.some((record) => record.outcome !== "completed");
+  const latest = records
+    .filter(
+      (record): record is DeliverAttemptMetricRecord =>
+        record.kind === "deliver_attempt" &&
+        record.event === "settled" &&
+        record.change === change,
+    )
+    .sort((a, b) => b.timestamp - a.timestamp)[0];
+  return latest != null && latest.outcome !== "completed";
 }
