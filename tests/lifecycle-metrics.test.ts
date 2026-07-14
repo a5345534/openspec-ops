@@ -278,6 +278,17 @@ describe("lifecycle metrics reports", () => {
     expect(report.deliver.hardStopDistribution["ops-impl-review:tests_failed"]).toBe(1);
     expect(hasPriorUnsuccessfulAttempt(records, "demo-change")).toBe(false);
     expect(hasPriorUnsuccessfulAttempt(records.slice(0, 2), "demo-change")).toBe(true);
+    const openAttempt: DeliverAttemptMetricRecord = {
+      ...base,
+      timestamp: 5,
+      kind: "deliver_attempt",
+      event: "start",
+      attemptId: "a3",
+      change: "demo-change",
+      resume: false,
+      startStation: "unknown",
+    };
+    expect(hasPriorUnsuccessfulAttempt([...records, openAttempt], "demo-change")).toBe(true);
   });
 });
 

@@ -410,13 +410,20 @@ export function hasPriorUnsuccessfulAttempt(
   records: MetricsRecord[],
   change: string,
 ): boolean {
-  const latest = records
+  const attempts = records.filter(
+    (record): record is DeliverAttemptMetricRecord =>
+      record.kind === "deliver_attempt" && record.change === change,
+  );
+  const latestStart = attempts
+    .filter((record) => record.event === "start")
+    .sort((a, b) => b.timestamp - a.timestamp)[0];
+  if (!latestStart) return false;
+  const settled = attempts
     .filter(
-      (record): record is DeliverAttemptMetricRecord =>
-        record.kind === "deliver_attempt" &&
-        record.event === "settled" &&
-        record.change === change,
+      (record) =>
+        record.event === "settled" && record.attemptId === latestStart.attemptId,
     )
     .sort((a, b) => b.timestamp - a.timestamp)[0];
-  return latest != null && latest.outcome !== "completed";
+  // A start without a settle is an incomplete/crashed attempt and must resume.
+  return settled == null || settled.outcome !== "completed";
 }
