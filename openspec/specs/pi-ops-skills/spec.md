@@ -455,4 +455,3 @@ The shared runtime resolver SHALL return the selected absolute path and its sour
 - **WHEN** no explicit override and no loaded package root are available
 - **AND** PATH contains an executable openspec-ops
 - **THEN** standalone skill/runtime resolution may use the PATH executable
-

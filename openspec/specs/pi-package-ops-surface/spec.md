@@ -149,4 +149,3 @@ Resolving and exposing a package-local CLI to skills SHALL affect only the runni
 - **WHEN** the guided extension binds its package-local CLI for a Pi session
 - **THEN** no global npm link, shell profile edit, or project config write is performed
 - **AND** ending the Pi process removes the session environment handoff naturally
-
