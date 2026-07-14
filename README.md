@@ -40,6 +40,10 @@ Between steps: /ops-next [change]  # guided menu (omit name → pick change)
 spec-review and impl-review; invoke **authorizes merge** when gates pass. Resume-safe.
 Use `/ops-next` for single-step control instead.
 
+Deliver lifecycle success means stations through **finish** completed for the change. It does **not**
+mean the primary worktree was pulled to `origin/main` unless you pass opt-in finish sync flags
+(default deliver does **not** pass them). See monorepo closeout checklist under Submodules.
+
 ```
 
 - **ensure ≠ cwd** — skills/extension must use `where.path` explicitly ([snippet](docs/snippets/worktree-alignment-block.md)).
@@ -67,6 +71,36 @@ Recommended order when you implement inside a submodule:
 Dirty `finish` messages mention submodule risk; openspec-ops never auto-commits submodules.
 
 **Finish + submodules:** before `git worktree remove`, finish **deinits** initialized top-level submodules in the change worktree (`git submodule deinit -f -- <path>`), then removes the worktree (branch kept). Dirty trees still need commit/stash or `--force`. If teardown fails: error `submodule_teardown_failed` with a manual deinit hint.
+
+### After deliver/finish: primary is not auto-updated
+
+**GitHub merge success ≠ primary checkout already on latest `main`.**  
+By design, `finish` does **not** `git pull` the primary worktree and does **not** re-init submodules on primary (avoids mutating the operator’s main checkout without consent).
+
+Monorepo closeout checklist (manual):
+
+```bash
+cd <primary>
+git switch main                    # or your default base
+git pull --ff-only origin main
+git submodule update --init --recursive
+```
+
+After `submodule update`, a submodule on **detached HEAD at the parent gitlink** is **normal Git** (the pin is the source of truth)—not a failed deliver. Local branch `main` inside the submodule may lag or diverge from that pin; do not force-push submodule `main` to “fix” it unless you intend a publish policy.
+
+`openspec-ops doctor` can report:
+- `primary_behind_origin` (warning) when primary lags local `origin/<base>`
+- `primary_submodule_detached` (info) / `primary_submodule_detached_dirty` (warning) on primary
+
+Optional finish flags (default **off**):
+
+```bash
+openspec-ops finish <change> --sync-primary          # clean primary only; ff-only pull
+openspec-ops finish <change> --sync-submodules       # submodule update --init --recursive on primary
+openspec-ops finish <change> --attach-submodule-main # only if pin == or ff from main; never force
+```
+
+Related: teardown / submodule **feature-branch** prune is separate (see issue #22); this checklist is the **return-to-main** DoD (issue #24).
 
 ## Phase 0: workspace lifecycle CLI
 

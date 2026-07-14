@@ -8,14 +8,31 @@ import {
   isSubmoduleContainmentError,
   prepareWorktreeForRemoval,
 } from "../submodules/teardown.js";
+import {
+  closeoutHintMessages,
+  detectPrimaryBehindOrigin,
+} from "../doctor/primary-closeout.js";
 import { locateWorkspace } from "./where.js";
 import {
   cleanupMergedChangeBranches,
   type BranchCleanupDeps,
   defaultBranchCleanupDeps,
 } from "./branch-cleanup.js";
+import {
+  attachSubmodulesToMainIfSafe,
+  defaultFinishSyncDeps,
+  syncPrimaryCheckout,
+  syncPrimarySubmodules,
+  type FinishSyncDeps,
+} from "./finish-sync.js";
 import { printSuccess } from "../output.js";
-import { CliError, type FinishOptions, type FinishResult } from "../types.js";
+import {
+  CliError,
+  type FinishCloseoutHints,
+  type FinishOptions,
+  type FinishResult,
+  type FinishSyncResult,
+} from "../types.js";
 
 export type FinishDeps = {
   locate: typeof locateWorkspace;
@@ -24,6 +41,8 @@ export type FinishDeps = {
   removeWorktree: typeof removeWorktree;
   branchCleanup: typeof cleanupMergedChangeBranches;
   branchCleanupDeps?: BranchCleanupDeps;
+  finishSyncDeps?: FinishSyncDeps;
+  detectBehind?: typeof detectPrimaryBehindOrigin;
 };
 
 const defaultFinishDeps: FinishDeps = {
@@ -44,6 +63,9 @@ export function runFinish(
   const remote = options.remote ?? "origin";
   const keepBranch = Boolean(options.keepBranch);
   const force = Boolean(options.force);
+  const wantSyncPrimary = Boolean(options.syncPrimary);
+  const wantSyncSubs = Boolean(options.syncSubmodules);
+  const wantAttach = Boolean(options.attachSubmoduleMain);
 
   let worktreeRemoved = false;
   let path: string | null = null;
@@ -163,6 +185,60 @@ export function runFinish(
     action = "removed";
   }
 
+  const detectBehind = deps.detectBehind ?? detectPrimaryBehindOrigin;
+  const behind = detectBehind(ctx.primaryPath, { remote });
+  const closeoutHints: FinishCloseoutHints = {
+    primaryBehindOrigin: behind.behind,
+    originBaseRef: behind.originBaseRef,
+    baseBranch: behind.baseBranch,
+    messages: closeoutHintMessages(ctx.primaryPath, behind),
+  };
+
+  const sync: FinishSyncResult = {
+    syncPrimary: wantSyncPrimary ? "failed" : "skipped",
+    syncSubmodules: wantSyncSubs ? "failed" : "skipped",
+    attachSubmoduleMain: wantAttach ? "failed" : "skipped",
+    attached: [],
+    diverged: [],
+  };
+
+  const syncDeps = deps.finishSyncDeps ?? defaultFinishSyncDeps;
+  const syncCtx = { worktreeRemoved, remote };
+
+  // Opt-in primary closeout (after workspace closeout). Failures rethrow with worktreeRemoved detail.
+  if (wantSyncPrimary) {
+    syncPrimaryCheckout(ctx.primaryPath, syncCtx, syncDeps);
+    sync.syncPrimary = "ok";
+  }
+  if (wantSyncSubs) {
+    syncPrimarySubmodules(ctx.primaryPath, syncCtx, syncDeps);
+    sync.syncSubmodules = "ok";
+  }
+  if (wantAttach) {
+    const att = attachSubmodulesToMainIfSafe(ctx.primaryPath, {}, syncDeps);
+    sync.attached = att.attached;
+    sync.diverged = att.diverged;
+    sync.attachSubmoduleMain = att.diverged.length > 0 ? "partial" : "ok";
+    if (att.diverged.length > 0) {
+      closeoutHints.messages.push(
+        `submodule_main_diverged: ${att.diverged.join(", ")} (left at pin; no force)`,
+      );
+    }
+  }
+
+  // Refresh behind hint after optional sync-primary
+  if (wantSyncPrimary) {
+    const behind2 = detectBehind(ctx.primaryPath, { remote });
+    closeoutHints.primaryBehindOrigin = behind2.behind;
+    closeoutHints.originBaseRef = behind2.originBaseRef;
+    closeoutHints.baseBranch = behind2.baseBranch;
+    if (!behind2.behind) {
+      closeoutHints.messages = closeoutHints.messages.filter(
+        (m) => !m.includes("Primary is behind"),
+      );
+    }
+  }
+
   const result: FinishResult = {
     action,
     change,
@@ -184,6 +260,8 @@ export function runFinish(
         ? { number: cleanup.mergedPr.number, url: cleanup.mergedPr.url }
         : null,
     },
+    closeoutHints,
+    sync,
   };
 
   const branchLine = keepBranch
@@ -215,6 +293,14 @@ export function runFinish(
       `forced:  ${result.forced}`,
       ...(cleanup.mergedPr
         ? [`pr:      #${cleanup.mergedPr.number} ${cleanup.mergedPr.url}`]
+        : []),
+      ...(closeoutHints.messages.length
+        ? closeoutHints.messages.map((m) => `hint:    ${m}`)
+        : []),
+      ...(wantSyncPrimary || wantSyncSubs || wantAttach
+        ? [
+            `sync:    primary=${sync.syncPrimary} submodules=${sync.syncSubmodules} attach=${sync.attachSubmoduleMain}`,
+          ]
         : []),
     ],
   });

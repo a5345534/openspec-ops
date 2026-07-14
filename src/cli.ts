@@ -18,9 +18,12 @@ Harness-neutral git worktree lifecycle for OpenSpec changes.
 Usage:
   openspec-ops start  <change> [--path P] [--branch B] [--base REF] [--init-submodule-branches] [--json] [--repo PATH]
   openspec-ops where  <change> [--path P] [--branch B] [--json] [--repo PATH]
-  openspec-ops finish <change> [--path P] [--branch B] [--force] [--keep-branch] [--remote R] [--json] [--repo PATH]
+  openspec-ops finish <change> [--path P] [--branch B] [--force] [--keep-branch] [--remote R]
+                      [--sync-primary] [--sync-submodules] [--attach-submodule-main]
+                      [--json] [--repo PATH]
                       # remove worktree (deinit submodules); if PR merged, delete local+remote branch
                       # --keep-branch: never delete branches; --force: dirty worktree only
+                      # opt-in (default off): --sync-primary ff-only; --sync-submodules; --attach-submodule-main
   openspec-ops ship   <change> [ship flags] [--json] [--repo PATH]
   openspec-ops merge  <change> [--method squash|merge|rebase] [--json] [--repo PATH]
   openspec-ops prune  <change> [--remote R] [--branch B] [--json] [--repo PATH]  # deprecated: prefer finish
@@ -50,6 +53,8 @@ Ship does not merge, archive, or finish the worktree.
 
 Finish closeout: remove worktree when present; if PR merged (gh), delete local+remote branch
 unless --keep-branch. Works without worktree (branch-only). Never deletes unmerged branches.
+GitHub success ≠ primary pulled (default). Optional: --sync-primary, --sync-submodules,
+--attach-submodule-main (non-destructive only).
 
 Prune is deprecated (branch-only compat when no worktree). Prefer finish for closeout.
 
@@ -94,6 +99,18 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (arg === "--keep-branch") {
       flags["keep-branch"] = true;
+      continue;
+    }
+    if (arg === "--sync-primary") {
+      flags["sync-primary"] = true;
+      continue;
+    }
+    if (arg === "--sync-submodules") {
+      flags["sync-submodules"] = true;
+      continue;
+    }
+    if (arg === "--attach-submodule-main") {
+      flags["attach-submodule-main"] = true;
       continue;
     }
     if (arg === "--draft") {
@@ -217,6 +234,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           force,
           keepBranch: Boolean(parsed.flags["keep-branch"]),
           remote: flagString(parsed.flags, "remote") ?? "origin",
+          syncPrimary: Boolean(parsed.flags["sync-primary"]),
+          syncSubmodules: Boolean(parsed.flags["sync-submodules"]),
+          attachSubmoduleMain: Boolean(parsed.flags["attach-submodule-main"]),
         });
         return 0;
       }
