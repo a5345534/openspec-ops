@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-import { resolveOpsBin } from "../ops-runtime/run-ops.js";
+import { resolveOpsBinDetailed } from "../ops-runtime/run-ops.js";
 
 import type { DoctorIssue } from "../types.js";
 
@@ -40,17 +40,35 @@ export function collectEnvDoctorIssues(options: {
   const packageRoot = options.packageRoot ?? options.primaryPath;
   const projectRoot = options.primaryPath;
 
-  const opsBin = resolveOpsBin({
+  const opsBin = resolveOpsBinDetailed({
     envBin: env.OPENSPEC_OPS_BIN,
     projectRoot: packageRoot,
+    env,
+    moduleFallback: false,
   });
-  if (!opsBin) {
+  if (!opsBin.ok) {
+    const packageFailure = opsBin.candidates.find(
+      (candidate) => candidate.source === "package",
+    );
     issues.push({
-      id: "ops_bin_missing",
+      id:
+        opsBin.code === "explicit_invalid"
+          ? "ops_bin_override_invalid"
+          : packageFailure
+            ? "ops_package_bin_invalid"
+            : "ops_bin_missing",
       severity: "warning",
-      path: packageRoot,
-      message: "openspec-ops CLI not resolvable (OPENSPEC_OPS_BIN / PATH / package bin)",
-      hint: "npm link from openspec-ops repo or set OPENSPEC_OPS_BIN",
+      path:
+        opsBin.code === "explicit_invalid"
+          ? (opsBin.candidates[0]?.path ?? packageRoot)
+          : (packageFailure?.path ?? packageRoot),
+      message: opsBin.message,
+      hint:
+        opsBin.code === "explicit_invalid"
+          ? "Fix or unset OPENSPEC_OPS_BIN; explicit invalid overrides fail closed"
+          : packageFailure
+            ? "Repair/update the project-local Pi package, or set a valid OPENSPEC_OPS_BIN"
+            : "Install/load openspec-ops, set OPENSPEC_OPS_BIN, or make the CLI available on PATH",
     });
   }
 

@@ -9,6 +9,8 @@ OpenSpec **plan/spec** quality gate: **phase check first**, then **full review r
 
 **Not** code/PR review. **Pre-apply only.**
 
+For `openspec-ops where`/doctor preflight, use a valid extension-bound exact executable path from current agent context first, safely quoted as one command path and never concatenated into `sh -c`. Otherwise use `OPENSPEC_OPS_BIN`, then PATH, or the documented `openspec status` fallback where applicable.
+
 ## Round semantics
 
 - **1 round = 1 full review** of current proposal/design/specs/tasks (whole change, not only prior majors).

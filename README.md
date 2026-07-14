@@ -197,12 +197,15 @@ pi update --extension git:github.com/<you>/openspec-ops
 pi install git:github.com/<you>/openspec-ops@v0.2.0
 ```
 
-**CLI on PATH:** git package install runs `npm install` (often omit dev). Runtime uses `tsx` from `dependencies` when `dist/` is missing. For a global CLI:
+**CLI runtime:** git package install runs `npm install` (often omit dev). Runtime uses `tsx` from `dependencies` when `dist/` is missing. When the guided extension is loaded, package-originated slash/skill workflows validate and bind that same package clone's `bin/openspec-ops`; project-local `/ops-deliver` therefore does **not** require a second global link.
+
+Selection is: explicit valid `OPENSPEC_OPS_BIN` → loaded package bin → PATH. The binding is session-local and safely supports package paths containing spaces. For direct shell use, extension-disabled standalone skills, or an intentional override, these remain available:
 
 ```bash
-# from the package clone or this repo
+# optional global/direct-shell CLI from the package clone or this repo
 npm link
-# or set OPENSPEC_OPS_BIN to the package's bin/openspec-ops
+# explicit highest-priority override
+export OPENSPEC_OPS_BIN="/absolute/package path/bin/openspec-ops"
 ```
 
 `package.json` declares a **pure sidecar** surface (ops-* only — does **not** replace consumer OpenSpec skills):
@@ -266,7 +269,7 @@ export OPENSPEC_OPS_INTERCEPT_NEW_CHANGE=off
 |---|---|---|
 | `OPENSPEC_OPS_INTERCEPT_NEW_CHANGE` | `on` | `on` = ensure then forward; `off` = pure forward |
 | `OPENSPEC_REAL_BIN` | (PATH) | Absolute path to real `@fission-ai/openspec` binary |
-| `OPENSPEC_OPS_BIN` | (PATH) | openspec-ops CLI for start |
+| `OPENSPEC_OPS_BIN` | (loaded package, then PATH) | Explicit openspec-ops CLI override; package workflows bind their own bin when unset |
 
 Package.json registers **`openspec-ops-intercept`** only (does **not** replace global `openspec`).
 
@@ -374,10 +377,11 @@ Manual workspace entry (advanced): `/ops-start <change>` or CLI `openspec-ops st
 
 Requirements for the agent / extension:
 
-- `openspec-ops` on `PATH`, or set `OPENSPEC_OPS_BIN` to the binary
-- Skills/prompts and the Pi extension call `openspec-ops … --json` (`schemaVersion: 1`)
+- Loaded package workflows receive an extension-bound exact CLI path and inherited session `OPENSPEC_OPS_BIN`
+- Without the guided extension, set `OPENSPEC_OPS_BIN` or provide `openspec-ops` on PATH
+- Skills/prompts and the Pi extension call the selected executable with `… --json` (`schemaVersion: 1`)
 
-**Full-text self-contained:** each of the 5 skills and 5 prompts embeds the full runtime rules (not short forwarders). When CLI contract text changes, update all relevant files together.
+**Full-text self-contained:** CLI-backed skills and prompts embed extension-bound resolution plus standalone env/PATH fallback (not short forwarders). When CLI contract text changes, update all relevant files together.
 
 **Not OpenSpec:** `ops-*` never replaces `opsx-*`. `/ops-finish` removes a worktree only; archive remains `/opsx-archive`.
 

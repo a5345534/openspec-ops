@@ -1,5 +1,11 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -22,54 +28,157 @@ export interface RunOpsResult {
   json?: OpsJsonEnvelope;
 }
 
-/**
- * Binary resolution (same order as ops-* skills):
- * 1. OPENSPEC_OPS_BIN
- * 2. PATH via `command -v` equivalent — caller may pass which lookup
- * 3. projectRoot/bin/openspec-ops
- */
-export function resolveOpsBin(options: {
+export type OpsBinSource = "explicit" | "package" | "path" | "module";
+
+export type OpsBinCandidateFailure = {
+  source: OpsBinSource;
+  path: string;
+  reason: "missing" | "not_file" | "not_executable" | "unresolvable";
+};
+
+export type OpsBinResolution =
+  | { ok: true; path: string; source: OpsBinSource }
+  | {
+      ok: false;
+      code: "explicit_invalid" | "not_found";
+      message: string;
+      candidates: OpsBinCandidateFailure[];
+    };
+
+export type ResolveOpsBinOptions = {
   envBin?: string | undefined;
   pathLookup?: () => string | undefined;
   projectRoot?: string;
-}): string | null {
-  const envBin = options.envBin ?? process.env.OPENSPEC_OPS_BIN;
-  if (envBin && existsSync(envBin)) return envBin;
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  moduleFallback?: boolean;
+};
 
-  if (options.pathLookup) {
-    const fromPath = options.pathLookup();
-    if (fromPath && existsSync(fromPath)) return fromPath;
-  } else {
-    const which = spawnSync("sh", ["-c", "command -v openspec-ops"], {
-      encoding: "utf8",
-    });
-    if (which.status === 0) {
-      const p = which.stdout.trim();
-      if (p && existsSync(p)) return p;
+function validateCandidate(
+  candidate: string,
+  source: OpsBinSource,
+  cwd: string,
+): { ok: true; path: string; source: OpsBinSource } | { ok: false; failure: OpsBinCandidateFailure } {
+  const absolute = isAbsolute(candidate) ? candidate : resolve(cwd, candidate);
+  if (!existsSync(absolute)) {
+    return {
+      ok: false,
+      failure: { source, path: absolute, reason: "missing" },
+    };
+  }
+  try {
+    if (!statSync(absolute).isFile()) {
+      return {
+        ok: false,
+        failure: { source, path: absolute, reason: "not_file" },
+      };
     }
+    accessSync(absolute, constants.X_OK);
+    return { ok: true, path: realpathSync(absolute), source };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      ok: false,
+      failure: {
+        source,
+        path: absolute,
+        reason: code === "EACCES" ? "not_executable" : "unresolvable",
+      },
+    };
   }
+}
 
-  if (options.projectRoot) {
-    const local = resolve(options.projectRoot, "bin/openspec-ops");
-    if (existsSync(local)) return local;
-  }
+function pathCandidate(options: ResolveOpsBinOptions): string | undefined {
+  if (options.pathLookup) return options.pathLookup();
+  const which = spawnSync("sh", ["-c", "command -v openspec-ops"], {
+    encoding: "utf8",
+    env: options.env ?? process.env,
+  });
+  if (which.status !== 0) return undefined;
+  return which.stdout.trim() || undefined;
+}
 
-  // Last resort: npm global bin next to this package when linked
+function moduleCandidates(): string[] {
   try {
     const here = resolve(fileURLToPath(import.meta.url), "..");
     // src/ops-runtime or dist/ops-runtime → package root
-    const candidates = [
+    return [
       resolve(here, "../../bin/openspec-ops"),
       resolve(here, "../bin/openspec-ops"),
     ];
-    for (const c of candidates) {
-      if (existsSync(c)) return c;
-    }
   } catch {
-    // ignore
+    return [];
+  }
+}
+
+/**
+ * Resolve a CLI runtime with provenance.
+ *
+ * With loaded package context: explicit override → package bin → PATH →
+ * module-relative fallback. An explicit but invalid override fails closed.
+ */
+export function resolveOpsBinDetailed(
+  options: ResolveOpsBinOptions = {},
+): OpsBinResolution {
+  const cwd = options.cwd ?? process.cwd();
+  const failures: OpsBinCandidateFailure[] = [];
+  const explicit = Object.prototype.hasOwnProperty.call(options, "envBin")
+    ? options.envBin
+    : process.env.OPENSPEC_OPS_BIN;
+
+  if (explicit?.trim()) {
+    const checked = validateCandidate(explicit.trim(), "explicit", cwd);
+    if (checked.ok) return checked;
+    return {
+      ok: false,
+      code: "explicit_invalid",
+      message: `Explicit OPENSPEC_OPS_BIN is unusable (${checked.failure.reason}): ${checked.failure.path}`,
+      candidates: [checked.failure],
+    };
   }
 
-  return null;
+  if (options.projectRoot) {
+    const checked = validateCandidate(
+      resolve(options.projectRoot, "bin/openspec-ops"),
+      "package",
+      cwd,
+    );
+    if (checked.ok) return checked;
+    failures.push(checked.failure);
+  }
+
+  const fromPath = pathCandidate(options);
+  if (fromPath) {
+    const checked = validateCandidate(fromPath, "path", cwd);
+    if (checked.ok) return checked;
+    failures.push(checked.failure);
+  }
+
+  if (options.moduleFallback !== false) {
+    for (const candidate of moduleCandidates()) {
+      const checked = validateCandidate(candidate, "module", cwd);
+      if (checked.ok) return checked;
+      if (!failures.some((failure) => failure.path === checked.failure.path)) {
+        failures.push(checked.failure);
+      }
+    }
+  }
+
+  const packageFailure = failures.find((failure) => failure.source === "package");
+  return {
+    ok: false,
+    code: "not_found",
+    message: packageFailure
+      ? `Package-local openspec-ops CLI is unusable (${packageFailure.reason}) and no executable override/PATH fallback was found: ${packageFailure.path}`
+      : "openspec-ops CLI not found in explicit override, loaded package, PATH, or module fallback",
+    candidates: failures,
+  };
+}
+
+/** Compatibility wrapper for existing extension/doctor callers. */
+export function resolveOpsBin(options: ResolveOpsBinOptions = {}): string | null {
+  const result = resolveOpsBinDetailed(options);
+  return result.ok ? result.path : null;
 }
 
 export function runOps(
@@ -83,6 +192,13 @@ export function runOps(
     encoding: "utf8",
     env: { ...process.env },
   });
+  if (res.error) {
+    return {
+      code: 10,
+      stdout: res.stdout ?? "",
+      stderr: `Failed to execute openspec-ops (${(res.error as NodeJS.ErrnoException).code ?? "spawn_error"}): ${res.error.message}`,
+    };
+  }
   const code = res.status ?? 10;
   const stdout = res.stdout ?? "";
   const stderr = res.stderr ?? "";

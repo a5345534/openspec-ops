@@ -7,6 +7,8 @@ description: Post-ship impl full-review rounds (fix+push in-round; not verify-as
 
 After **ship**, before merge: **full review rounds** of implementation vs specs/tasks/diff; run tests (fail = major); fix code; commit; **push** (no force); in-round verify; if fixes and rounds remain → **another full review** until a full review finds no major or max full-review rounds (default 3; `/ops-config set impl-review.max-rounds`).
 
+For `openspec-ops where` and other CLI preflight, use a valid extension-bound exact executable path from current agent context first, safely quoted as one command path and never concatenated into `sh -c`. Otherwise use `OPENSPEC_OPS_BIN`, then PATH, or hard-stop if required CLI resolution fails.
+
 ## Round semantics
 
 - **1 round = 1 full review** (specs/tasks + diff/PR + tests)—not limited to prior fix list.

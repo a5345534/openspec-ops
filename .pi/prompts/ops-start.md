@@ -14,6 +14,12 @@ artifacts and does **not** run `/opsx-propose`.
 
 ## Shared runtime rules
 
+### Extension-bound runtime (first)
+
+If current agent context contains `REQUIRED: openspec-ops binary is "..." (source=...)`, first verify that exact path is still executable and use it as one safely quoted command path. The guided extension has already applied explicit-override/package/PATH precedence and exported the same path as `OPENSPEC_OPS_BIN`. Never concatenate the path into `sh -c`.
+
+If no valid extension binding is present, use the standalone fallback below.
+
 ### Resolve the binary
 
 Use the first match:

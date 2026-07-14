@@ -19,6 +19,10 @@ Runs **after** `openspec-ops ship` / `/ops-ship` and **before** human merge.
 
 **Not** a substitute for CODEOWNERS / human approve. **Does not** merge or `gh pr review approve`.
 
+## Runtime binding
+
+For `openspec-ops where` and other CLI preflight, use a valid extension-bound exact executable path from current agent context first (safely quoted; never concatenated into `sh -c`). Without a binding, use `OPENSPEC_OPS_BIN`, then PATH, or hard-stop if the required CLI cannot be resolved.
+
 ## Behavior: full review rounds (not verify-as-round)
 
 1. Resolve change worktree: `openspec-ops where "<change>" --json` → `result.path` as cwd.

@@ -300,6 +300,8 @@ export interface DoctorIssue {
     | "missing_worktree_path"
     | "worktree_without_change_dir"
     | "ops_bin_missing"
+    | "ops_bin_override_invalid"
+    | "ops_package_bin_invalid"
     | "openspec_not_intercept"
     | "openspec_real_bin_unset"
     | "propose_skill_alignment_markers_missing"
