@@ -345,6 +345,42 @@ describe("lifecycle metrics runtime", () => {
     expect(review?.missing).toBe(true);
   });
 
+  it("does not carry review-result state across repeated round numbers", () => {
+    const records: MetricsRecord[] = [];
+    const runtime = new LifecycleMetricsRuntime({
+      sessionIdHash: "abc",
+      enabled: () => true,
+      append: (record) => records.push(record),
+    });
+    runtime.setAction("demo-change", "ops-spec-review", "observed", 1);
+    runtime.recordTurn({
+      text: reviewMarkerLine({
+        change: "demo-change",
+        reviewType: "spec",
+        round: 1,
+        newMajors: 0,
+        newMinors: 0,
+        majorsFixed: 0,
+        fixVerificationPassed: true,
+        verdict: "ready",
+      }),
+      provider: "p",
+      model: "m",
+      usage: usage(),
+      context: null,
+    });
+    runtime.settleAgent("proposed");
+
+    runtime.setAction("demo-change", "ops-spec-review", "observed", 1);
+    runtime.settleAgent("proposed");
+    const rounds = records.filter(
+      (r): r is ReviewRoundMetricRecord => r.kind === "review_round",
+    );
+    expect(rounds).toHaveLength(2);
+    expect(rounds[0]?.missing).toBe(false);
+    expect(rounds[1]?.missing).toBe(true);
+  });
+
   it("is fail-open when append and warning callback throw", () => {
     const runtime = new LifecycleMetricsRuntime({
       sessionIdHash: "abc",

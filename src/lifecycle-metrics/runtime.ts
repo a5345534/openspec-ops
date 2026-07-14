@@ -63,7 +63,7 @@ export class LifecycleMetricsRuntime {
     reviewRound: null,
   };
   private attempt: AttemptState | null = null;
-  private readonly reviewKeysSeen = new Set<string>();
+  private reviewResultSeenForContext = false;
   private readonly options: RuntimeOptions;
 
   constructor(options: RuntimeOptions) {
@@ -101,7 +101,12 @@ export class LifecycleMetricsRuntime {
 
   private flushMissingReview(nextKey: string | null = null): void {
     const key = reviewKey(this.context);
-    if (!key || key === nextKey || this.reviewKeysSeen.has(key) || !this.context.change) {
+    if (
+      !key ||
+      key === nextKey ||
+      this.reviewResultSeenForContext ||
+      !this.context.change
+    ) {
       return;
     }
     const reviewType = reviewTypeForAction(this.context.action);
@@ -118,7 +123,7 @@ export class LifecycleMetricsRuntime {
       missing: true,
     };
     this.append(record);
-    this.reviewKeysSeen.add(key);
+    this.reviewResultSeenForContext = true;
   }
 
   setAction(
@@ -133,7 +138,10 @@ export class LifecycleMetricsRuntime {
       attribution,
       reviewRound: round,
     };
-    this.flushMissingReview(reviewKey(next));
+    const previousKey = reviewKey(this.context);
+    const nextKey = reviewKey(next);
+    this.flushMissingReview(nextKey);
+    if (previousKey !== nextKey) this.reviewResultSeenForContext = false;
     this.context = next;
   }
 
@@ -209,7 +217,7 @@ export class LifecycleMetricsRuntime {
         verdict: marker.verdict,
       };
       this.append(record);
-      this.reviewKeysSeen.add(`${marker.change}:${marker.reviewType}:${marker.round}`);
+      this.reviewResultSeenForContext = true;
       if (marker.verdict === "needs_human" && this.attempt) {
         this.attempt.needsHuman = true;
       }
@@ -257,6 +265,7 @@ export class LifecycleMetricsRuntime {
       attribution: "unknown",
       reviewRound: null,
     };
+    this.reviewResultSeenForContext = false;
   }
 
   settleDeliver(endStation: LifecycleStation): void {
