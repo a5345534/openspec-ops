@@ -20,6 +20,12 @@ One command: **start → finish** for a named change.
 **Not** `/opsx-explore`. **Not** background auto-*.  
 **`/ops-next`** remains for single-step manual control.
 
+## Bound runtime (all CLI-backed stages)
+
+When the extension follow-up contains `REQUIRED: openspec-ops binary is "..." (source=...)`, verify that exact path is still executable and use it for start/where/ship/merge/finish and every other openspec-ops CLI action in this pipeline. Treat it as one safely quoted command path; the extension also exports the same path as `OPENSPEC_OPS_BIN`. Never substitute raw Git, `npx`, or an unrelated PATH binary. If it becomes unusable, hard-stop clearly.
+
+If no extension binding is present (for example direct skill use without the guided extension), fall back to a valid `OPENSPEC_OPS_BIN`, then `openspec-ops` on PATH, or stop with install/package guidance.
+
 ## Consent
 
 Running `/ops-deliver <change>` means the operator authorizes, when gates pass:
@@ -33,7 +39,7 @@ Running `/ops-deliver <change>` means the operator authorizes, when gates pass:
 - **Required:** kebab-case change name  
 - Optional: short objective text to seed propose  
 
-Slash **`/ops-deliver`** is registered **only** on the guided extension (no `.pi/prompts/ops-deliver.md` — avoids dual slash registration). Args are parsed and a follow-up **binds** the change name so the agent must not claim it is missing.
+Slash **`/ops-deliver`** is registered **only** on the guided extension (no `.pi/prompts/ops-deliver.md` — avoids dual slash registration). Args are parsed and a follow-up **binds** both the change name and validated CLI runtime so the agent must not claim either is missing.
 
 This skill is agent-loaded (or `/skill:ops-deliver`); the slash entrypoint is the extension command.
 

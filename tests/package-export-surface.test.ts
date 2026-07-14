@@ -63,6 +63,35 @@ describe("package ops-only Pi surface", () => {
     expect(files).not.toContain(".pi/prompts/ops-deliver.md");
   });
 
+  it("CLI-backed packaged docs accept the extension-bound runtime", () => {
+    const files = [
+      ".pi/skills/ops-start/SKILL.md",
+      ".pi/skills/ops-where/SKILL.md",
+      ".pi/skills/ops-finish/SKILL.md",
+      ".pi/skills/ops-doctor/SKILL.md",
+      ".pi/skills/ops-ship/SKILL.md",
+      ".pi/skills/ops-prune/SKILL.md",
+      ".pi/skills/ops-merge/SKILL.md",
+      ".pi/skills/ops-spec-review/SKILL.md",
+      ".pi/skills/ops-impl-review/SKILL.md",
+      ".pi/skills/ops-deliver/SKILL.md",
+      ".pi/prompts/ops-start.md",
+      ".pi/prompts/ops-where.md",
+      ".pi/prompts/ops-finish.md",
+      ".pi/prompts/ops-doctor.md",
+      ".pi/prompts/ops-ship.md",
+      ".pi/prompts/ops-prune.md",
+      ".pi/prompts/ops-merge.md",
+      ".pi/prompts/ops-spec-review.md",
+      ".pi/prompts/ops-impl-review.md",
+    ];
+    for (const file of files) {
+      const body = readFileSync(resolve(process.cwd(), file), "utf8");
+      expect(body.toLowerCase(), file).toContain("extension-bound");
+      expect(body, file).toContain("OPENSPEC_OPS_BIN");
+    }
+  });
+
   it("clean build does not leave dist/auto-ensure", () => {
     expect(existsSync(resolve(process.cwd(), "dist/auto-ensure"))).toBe(false);
   });

@@ -19,6 +19,10 @@ metadata:
 
 Runs **after** `/opsx-propose` and **before** `/opsx-apply` only.
 
+## Runtime binding
+
+For `openspec-ops where`/doctor preflight, use a valid extension-bound exact executable path from current agent context first (safely quoted; never concatenated into `sh -c`). Without a binding, use `OPENSPEC_OPS_BIN`, then PATH, or continue with `openspec status` only where the documented fallback permits; never replace the CLI with raw worktree Git.
+
 ## Phase check (do this first)
 
 1. Resolve roots: worktree path from `openspec-ops where` (if any) + primary/`openspec status` roots.

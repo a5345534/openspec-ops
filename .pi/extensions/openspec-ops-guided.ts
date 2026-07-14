@@ -40,7 +40,13 @@ import {
   resolvePrSignals,
   type LifecycleStation,
 } from "../../src/next-step/index.js";
-import { resolveOpsBin, runOps } from "../../src/ops-runtime/run-ops.js";
+import {
+  resolveOpsBin,
+  resolveOpsBinDetailed,
+  runOps,
+} from "../../src/ops-runtime/run-ops.js";
+import { buildDeliverFollowup } from "../../src/ops-runtime/deliver-handoff.js";
+import { formatOpsRuntimeBinding } from "../../src/ops-runtime/runtime-binding.js";
 import {
   CHANGE_NAME_RE,
   parseSlashChangeAndRest,
@@ -161,6 +167,14 @@ function formatSqliteSync(result: MetricsSqliteSyncResult, verb = "synchronized"
 
 export default function (pi: ExtensionAPI) {
   let active: WorkspaceState | null = null;
+  const opsRuntime = resolveOpsBinDetailed({ projectRoot: PACKAGE_ROOT });
+  if (opsRuntime.ok && !process.env.OPENSPEC_OPS_BIN) {
+    // Session-local handoff: descendants inherit the same package-affine CLI.
+    process.env.OPENSPEC_OPS_BIN = opsRuntime.path;
+  }
+  const opsRuntimeBlock = opsRuntime.ok
+    ? formatOpsRuntimeBinding(opsRuntime)
+    : `openspec-ops runtime unavailable: ${opsRuntime.message}`;
   const metricsAgentDir = getAgentDir();
   let metricsEnabled = readMetricsConfig(metricsAgentDir).enabled;
   let metricsRuntime: LifecycleMetricsRuntime | null = null;
@@ -290,7 +304,7 @@ export default function (pi: ExtensionAPI) {
       return {
         message: {
           customType: "openspec-ops-config",
-          content: configBlock,
+          content: `${opsRuntimeBlock}\n\n${configBlock}`,
           display: false,
         },
       };
@@ -298,6 +312,7 @@ export default function (pi: ExtensionAPI) {
     const lines = [
       `Active openspec-ops workspace: change=${active.change} path=${active.path} branch=${active.branch} mode=${active.mode}.`,
       `REQUIRED: Prefer workspace path ${active.path} for change "${active.change}" (tool cwd or cd). start does NOT switch process cwd.`,
+      opsRuntimeBlock,
       configBlock,
     ];
     active = null;
@@ -318,12 +333,11 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("Usage: /ops-start <change>", "warning");
         return;
       }
-      const bin = resolveOpsBin({ projectRoot: PACKAGE_ROOT });
-      if (!bin) {
-        ctx.ui.notify("openspec-ops CLI not found", "error");
+      if (!opsRuntime.ok) {
+        ctx.ui.notify(opsRuntime.message, "error");
         return;
       }
-      const res = runOps(bin, ["start", change], { cwd: ctx.cwd });
+      const res = runOps(opsRuntime.path, ["start", change], { cwd: ctx.cwd });
       const resJson = res.json;
       if (res.code !== 0 || !resJson || !resJson.ok) {
         const errMsg =
@@ -675,7 +689,7 @@ export default function (pi: ExtensionAPI) {
       let branch = change;
       let prCwd = ctx.cwd || PACKAGE_ROOT;
 
-      const bin = resolveOpsBin({ projectRoot: PACKAGE_ROOT });
+      const bin = opsRuntime.ok ? opsRuntime.path : null;
       if (bin) {
         const where = runOps(bin, ["where", change], { cwd: ctx.cwd });
         if (where.json?.ok && where.json.result) {
@@ -776,6 +790,14 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
+      if (!opsRuntime.ok) {
+        ctx.ui.notify(
+          `Cannot schedule ops-deliver: ${opsRuntime.message}`,
+          "error",
+        );
+        return;
+      }
+
       if (metricsEnabled) {
         try {
           const prior = readMetricsRecords(metricsAgentDir).records;
@@ -789,15 +811,14 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      const lines = [
-        `Run the ops-deliver skill for change \`${change}\` only.`,
-        `REQUIRED: change name is \`${change}\` (kebab-case). Do not claim the name is missing.`,
-        rest ? `Optional objective: ${rest}` : "",
-        "Follow .pi/skills/ops-deliver/SKILL.md until done or hard stop (mandatory reviews; merge consent already given by this invoke).",
-      ].filter(Boolean);
+      const followup = buildDeliverFollowup({
+        change,
+        ...(rest ? { objective: rest } : {}),
+        runtime: opsRuntime,
+      });
 
       if (typeof pi.sendUserMessage === "function") {
-        pi.sendUserMessage(lines.join("\n"), { deliverAs: "followUp" });
+        pi.sendUserMessage(followup, { deliverAs: "followUp" });
         ctx.ui.notify(`ops-deliver scheduled for ${change}`, "info");
       } else {
         try {
@@ -806,7 +827,7 @@ export default function (pi: ExtensionAPI) {
           metricsRuntime?.settleDeliver("unknown");
         }
         ctx.ui.notify(
-          `No sendUserMessage — run ops-deliver for ${change} manually.\n${lines.join("\n")}`,
+          `No sendUserMessage — run ops-deliver for ${change} manually.\n${followup}`,
           "warning",
         );
       }

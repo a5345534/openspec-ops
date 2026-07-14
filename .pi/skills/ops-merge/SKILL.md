@@ -19,6 +19,10 @@ Merge the **open PR** for a change branch into the base (default **squash**).
 **Only run when the user explicitly asked to merge** this turn.  
 Do **not** call after ship or impl-review unless they asked to merge.
 
+## Extension-bound runtime (first)
+
+If current agent context contains `REQUIRED: openspec-ops binary is "..." (source=...)`, verify and use that exact safely quoted executable path first; the extension also exports it as `OPENSPEC_OPS_BIN`. Never concatenate the path into `sh -c`. Without a valid binding, use the fallback below.
+
 ## Binary
 
 1. `$OPENSPEC_OPS_BIN` or `openspec-ops` on PATH  
