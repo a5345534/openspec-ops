@@ -3,9 +3,7 @@
 ## Purpose
 
 Pi agent skills and slash prompts that orchestrate the openspec-ops workspace CLI with stable JSON handling and OpenSpec boundary guardrails.
-
 ## Requirements
-
 ### Requirement: Four paired Pi skills and slash prompts exist
 The project SHALL provide Pi skills and matching slash prompts for workspace lifecycle orchestration under the **ops-** prefix only for package export:
 
@@ -55,29 +53,36 @@ When shared rules or command steps change, all eight documents MUST be updated i
 ---
 
 ### Requirement: Shared runtime rules content
-Every ops skill and ops prompt SHALL instruct the agent to:
+Every CLI-backed ops skill and ops prompt SHALL instruct the agent to:
 
-1. Resolve binary in order: `$OPENSPEC_OPS_BIN` if set → `openspec-ops` on `PATH` → stop with install/link guidance
-2. Always pass `--json` on CLI invocations
-3. Parse a single JSON object from stdout and require `schemaVersion` equal to `1` (warn or stop on mismatch)
-4. Use exit codes `0|1|2|3|4|5|10` with the Phase 0 meanings (success; usage/invalid name; repo/base errors; conflicts; dirty; not found; git/internal)
-5. Prefer `error.code` over scraping `error.message` for control flow
-6. Never run raw `git worktree` / `git switch` as a substitute for the CLI
-7. Never replace or silently implement `/opsx-propose`, `/opsx-apply`, `/opsx-archive`, or `/opsx-sync`
-8. Never commit, push, open PRs, merge, or delete branches as part of these skills
-9. Never pass `--force` without explicit user consent in the current turn
-10. Prefer subsequent implementation/OpenSpec commands use the workspace `path` as cwd when known
+1. Use a validated exact openspec-ops executable path supplied by the loaded guided extension when an extension-bound runtime is present
+2. Otherwise resolve `$OPENSPEC_OPS_BIN` if set and executable, then `openspec-ops` on PATH, then stop with install/link/package-repair guidance
+3. Quote the selected executable safely and invoke it as a command path with argv, not by concatenating untrusted path text into `sh -c`
+4. Always pass `--json` on CLI invocations
+5. Parse a single JSON object from stdout and require `schemaVersion` equal to `1` (warn or stop on mismatch)
+6. Use exit codes `0|1|2|3|4|5|10` with the Phase 0 meanings (success; usage/invalid name; repo/base errors; conflicts; dirty; not found; git/internal)
+7. Prefer `error.code` over scraping `error.message` for control flow
+8. Never run raw `git worktree` / `git switch` as a substitute for the CLI
+9. Never replace or silently implement `/opsx-propose`, `/opsx-apply`, `/opsx-archive`, or `/opsx-sync`
+10. Never commit, push, open PRs, merge, or delete branches as part of these skills
+11. Never pass `--force` without explicit user consent in the current turn
+12. Prefer subsequent implementation/OpenSpec commands use the workspace `path` as cwd when known
+
+The optional extension-bound source MUST NOT make a document dependent on the extension: when no binding is present, env/PATH fallback and hard-stop behavior SHALL remain fully specified in that same skill/prompt.
+
+#### Scenario: extension-bound package binary is used
+- **WHEN** a CLI-backed ops skill receives a validated runtime binding from the loaded guided extension
+- **THEN** the instructions require using that exact executable before standalone env/PATH discovery
+- **AND** paths containing spaces remain one safely quoted executable argument
 
 #### Scenario: Missing binary stops without git fallback
-- **WHEN** the agent follows an ops skill and `openspec-ops` cannot be resolved
-- **THEN** the instructions require stopping with install guidance
+- **WHEN** no extension binding, explicit env, or PATH executable can be resolved
+- **THEN** the instructions require stopping with install/package guidance
 - **AND** the instructions forbid falling back to manual `git worktree add`
 
 #### Scenario: JSON schema version pinned
 - **WHEN** the agent runs an ops CLI command per the skill
 - **THEN** the instructions require `--json` and `schemaVersion === 1` handling
-
----
 
 ### Requirement: ops-start orchestration behavior
 The ops-start skill and prompt SHALL instruct the agent to:
@@ -170,15 +175,15 @@ ops-* skills and prompts MUST remain a side path around OpenSpec:
 ### Requirement: README documents Pi usage
 The root `README.md` SHALL document:
 
-- The mapping ` /ops-start` → OpenSpec `/opsx-*` → `/ops-finish`
-- That skills shell out to `openspec-ops` and require the CLI on `PATH` or `OPENSPEC_OPS_BIN`
+- The mapping `/ops-start` → OpenSpec `/opsx-*` → `/ops-finish`
+- That a loaded project-local openspec-ops Pi package supplies and binds its own package-local CLI for package-originated workflows
+- That `OPENSPEC_OPS_BIN` remains the explicit override and PATH/global linking remains useful for direct shell or extension-absent skill usage, but is not mandatory for the normal loaded-package slash workflow
 - Non-goals: no auto-hijack of OpenSpec commands; prompts/skills are full-text maintained in pairs
 
 #### Scenario: README mentions ops-start and ops-finish
-- **WHEN** reading the root README after the change
+- **WHEN** reading the root README after this change
 - **THEN** it describes using ops-start before OpenSpec work and ops-finish for worktree cleanup
-
----
+- **AND** does not require `npm link` merely to run `/ops-deliver` from a correctly loaded project-local package
 
 ### Requirement: Propose orchestration binds OpenSpec writes to workspace path
 Package-shipped propose-related skills and prompts SHALL, once a change name is known, resolve `openspec-ops where`/`start` and use `result.path` as cwd for OpenSpec CLI and `openspec/changes/<change>/` writes, following worktree-write-alignment fail-closed rules.
@@ -198,7 +203,7 @@ so operators can detect loss after `openspec update`.
 - **THEN** the worktree-alignment BEGIN/END markers are present
 
 ### Requirement: Apply orchestration prefers workspace path when known
-Package-shipped apply-related skills and prompts SHOULD instruct the agent to prefer the openspec-ops worktree path as cwd when implementing a named change that has a registered workspace.
+Package-shipped apply-related skills and prompts SHALL instruct the agent to prefer the openspec-ops worktree path as cwd when implementing a named change that has a registered workspace.
 
 #### Scenario: apply skill mentions worktree path when available
 - **WHEN** reading the package apply skill
@@ -237,7 +242,6 @@ The skill/prompt SHALL instruct the agent to:
 - **WHEN** reading the ops-ship skill
 - **THEN** it includes an `openspec-ops ship` invocation with `--json`
 
-
 ---
 
 ### Requirement: ops-prune skill and prompt exist
@@ -246,7 +250,6 @@ The project SHALL provide a Pi skill and matching prompt for `ops-prune` that in
 #### Scenario: ops-prune skill documents prune command
 - **WHEN** reading the ops-prune skill
 - **THEN** it includes `openspec-ops prune` with `--json` and merged-PR gating guidance
-
 
 ---
 
@@ -414,3 +417,42 @@ The ops-deliver skill SHALL accept a change name supplied by an extension-inject
 #### Scenario: skill honors REQUIRED change binding line
 - **WHEN** the follow-up message states the change name is `add-dark-mode` (or equivalent REQUIRED binding)
 - **THEN** the skill proceeds with that change for the deliver pipeline
+
+### Requirement: Guided extension injects one validated runtime binding
+The guided extension SHALL resolve the current session's openspec-ops executable with provenance and inject a safely encoded absolute binding before agent start. If no explicit `OPENSPEC_OPS_BIN` was supplied, it SHALL make the resolved package/PATH executable available to Pi tool subprocesses through the session process environment. It MUST NOT overwrite an explicit operator override.
+
+#### Scenario: project-local package binding
+- **WHEN** the extension is loaded from a project-local package clone
+- **AND** no explicit override is configured
+- **THEN** the package-local executable is validated and injected into agent context
+- **AND** tool subprocesses inherit the same executable identity
+
+#### Scenario: explicit override is preserved
+- **WHEN** `OPENSPEC_OPS_BIN` is explicitly set before extension load
+- **THEN** the extension validates and binds that override
+- **AND** does not replace it with package or PATH resolution
+
+#### Scenario: path is safely encoded
+- **WHEN** the resolved executable path contains spaces, quotes, backticks, or other prompt-significant characters
+- **THEN** the injected binding encodes the path without creating additional instructions
+- **AND** downstream invocation treats it as one executable path
+
+### Requirement: Binary resolution validates executable identity and source
+The shared runtime resolver SHALL return the selected absolute path and its source (`explicit`, `package`, `path`, or module-relative fallback) and SHALL accept only a regular executable file. When a loaded package root is supplied and no explicit override exists, its bundled bin SHALL be preferred over PATH to keep extension, skills, and CLI on the same package version.
+
+#### Scenario: package bin wins over stale PATH binary
+- **WHEN** the loaded package has an executable bundled bin
+- **AND** PATH also contains a different openspec-ops binary
+- **AND** no explicit override is configured
+- **THEN** the resolver selects the loaded package bin with package provenance
+
+#### Scenario: invalid explicit override fails closed
+- **WHEN** `OPENSPEC_OPS_BIN` is explicitly configured but missing, non-regular, or non-executable
+- **THEN** resolution reports that override as invalid
+- **AND** does not silently choose package or PATH instead
+
+#### Scenario: no package context falls back to PATH
+- **WHEN** no explicit override and no loaded package root are available
+- **AND** PATH contains an executable openspec-ops
+- **THEN** standalone skill/runtime resolution may use the PATH executable
+

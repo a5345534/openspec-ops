@@ -5,7 +5,7 @@ The Pi extension SHALL register an `ops-deliver` command that parses a kebab-cas
 
 The system MUST NOT require the agent to rediscover the change name or package-local executable solely from an empty args payload/PATH when the extension already received the name and resolved its runtime. If no executable can be validated, the extension SHALL report a clear hard stop and SHALL NOT schedule the deliver follow-up.
 
-#### Scenario: slash with name schedules deliver for that change and runtime
+#### Scenario: slash with name schedules deliver for that change
 - **WHEN** the operator runs `/ops-deliver eve-via-litellm-gateway`
 - **AND** the extension is loaded from a project-local package with a usable bundled CLI
 - **THEN** a follow-up is scheduled that states the change name is `eve-via-litellm-gateway`

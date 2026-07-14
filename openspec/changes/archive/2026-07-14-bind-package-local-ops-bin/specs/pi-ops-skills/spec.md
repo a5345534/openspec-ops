@@ -23,7 +23,7 @@ The optional extension-bound source MUST NOT make a document dependent on the ex
 - **THEN** the instructions require using that exact executable before standalone env/PATH discovery
 - **AND** paths containing spaces remain one safely quoted executable argument
 
-#### Scenario: missing binary stops without git fallback
+#### Scenario: Missing binary stops without git fallback
 - **WHEN** no extension binding, explicit env, or PATH executable can be resolved
 - **THEN** the instructions require stopping with install/package guidance
 - **AND** the instructions forbid falling back to manual `git worktree add`
@@ -40,7 +40,7 @@ The root `README.md` SHALL document:
 - That `OPENSPEC_OPS_BIN` remains the explicit override and PATH/global linking remains useful for direct shell or extension-absent skill usage, but is not mandatory for the normal loaded-package slash workflow
 - Non-goals: no auto-hijack of OpenSpec commands; prompts/skills are full-text maintained in pairs
 
-#### Scenario: README mentions self-contained package runtime
+#### Scenario: README mentions ops-start and ops-finish
 - **WHEN** reading the root README after this change
 - **THEN** it describes using ops-start before OpenSpec work and ops-finish for worktree cleanup
 - **AND** does not require `npm link` merely to run `/ops-deliver` from a correctly loaded project-local package
