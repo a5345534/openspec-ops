@@ -25,7 +25,11 @@ export type ErrorCode =
   | "branch_not_merged"
   | "checks_failed"
   | "pr_not_found"
-  | "submodule_teardown_failed";
+  | "submodule_teardown_failed"
+  | "primary_dirty"
+  | "primary_diverged"
+  | "sync_primary_failed"
+  | "sync_submodules_failed";
 
 export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 10;
 
@@ -78,6 +82,10 @@ export function exitCodeForError(code: ErrorCode): ExitCode {
     case "checks_failed":
     case "pr_not_found":
     case "submodule_teardown_failed":
+    case "primary_dirty":
+    case "primary_diverged":
+    case "sync_primary_failed":
+    case "sync_submodules_failed":
       return 3;
     case "worktree_dirty":
       return 4;
@@ -129,6 +137,12 @@ export interface FinishOptions extends ChangeOptions {
   keepBranch?: boolean;
   /** Remote for branch delete when PR merged (default origin) */
   remote?: string;
+  /** Opt-in: ff-only pull primary to origin/<base> when clean */
+  syncPrimary?: boolean;
+  /** Opt-in: git submodule update --init --recursive on primary */
+  syncSubmodules?: boolean;
+  /** Opt-in: attach primary submodules to main when non-destructive */
+  attachSubmoduleMain?: boolean;
 }
 
 export interface ShipOptions extends ChangeOptions {
@@ -232,6 +246,21 @@ export interface WhereResult {
   submodules: SubmoduleStatus[];
 }
 
+export interface FinishCloseoutHints {
+  primaryBehindOrigin: boolean;
+  originBaseRef: string | null;
+  baseBranch: string | null;
+  messages: string[];
+}
+
+export interface FinishSyncResult {
+  syncPrimary: "skipped" | "ok" | "failed";
+  syncSubmodules: "skipped" | "ok" | "failed";
+  attachSubmoduleMain: "skipped" | "ok" | "partial" | "failed";
+  attached: string[];
+  diverged: string[];
+}
+
 export interface FinishResult {
   action: "removed" | "removed_and_pruned" | "pruned_only" | "already_clean";
   change: string;
@@ -252,6 +281,9 @@ export interface FinishResult {
     keptReason: "not_merged" | "keep_flag" | null;
     mergedPr: { number: number; url: string } | null;
   };
+  /** Always present for agent parse stability */
+  closeoutHints: FinishCloseoutHints;
+  sync: FinishSyncResult;
 }
 
 export interface DoctorWorktree {
@@ -275,7 +307,10 @@ export interface DoctorIssue {
     | "artifacts_on_primary_only"
     | "change_location_mismatch"
     | "submodule_detached"
-    | "submodule_detached_dirty";
+    | "submodule_detached_dirty"
+    | "primary_behind_origin"
+    | "primary_submodule_detached"
+    | "primary_submodule_detached_dirty";
   severity: "error" | "warning" | "info";
   path: string;
   message: string;

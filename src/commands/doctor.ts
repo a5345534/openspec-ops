@@ -3,6 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDirty } from "../git.js";
 import { collectEnvDoctorIssues } from "../doctor/env-checks.js";
+import { collectPrimaryCloseoutDoctorIssues } from "../doctor/primary-closeout.js";
 import { resolvePackageRoot } from "../package-root.js";
 import {
   findChangeDir,
@@ -158,7 +159,7 @@ export function runDoctor(options: GlobalOptions): DoctorResult {
     }
   }
 
-  // Submodule hygiene (top-level, read-only; fail-open)
+  // Submodule hygiene (top-level, read-only; fail-open) — linked change worktrees
   for (const wt of worktrees) {
     if (!existsSync(wt.path)) continue;
     try {
@@ -169,6 +170,15 @@ export function runDoctor(options: GlobalOptions): DoctorResult {
     } catch {
       // fail-open
     }
+  }
+
+  // Primary closeout hygiene (behind origin + primary submodule pin state)
+  try {
+    for (const issue of collectPrimaryCloseoutDoctorIssues(ctx.primaryPath)) {
+      issues.push(issue);
+    }
+  } catch {
+    // fail-open
   }
 
   // Env / intercept / propose skill markers (package root when this CLI is from openspec-ops)

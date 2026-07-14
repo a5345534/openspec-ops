@@ -41,6 +41,14 @@ function baseDeps(over: Partial<FinishDeps> = {}): FinishDeps {
       remoteAlreadyAbsent: false,
       keptReason: "not_merged",
     }),
+    detectBehind: () => ({
+      behind: false,
+      baseBranch: "main",
+      originBaseRef: "origin/main",
+      primaryHead: "a",
+      originHead: "a",
+      reason: "ok",
+    }),
     ...over,
   };
 }

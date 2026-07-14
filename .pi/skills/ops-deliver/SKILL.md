@@ -85,8 +85,24 @@ Code table: `defaultDeliverAction` / `deliverActionAfterReview` in `src/next-ste
         - `already_merged` → OK, continue.  
         - `checks_failed` / other errors → **STOP**.  
       - **finish:** never pass `--force`. Dirty → **STOP**.  
+        Do **not** pass `--sync-primary` / `--sync-submodules` / `--attach-submodule-main` by default.  
+        Only pass those flags if the operator or session config **explicitly** opts in.  
    f. Continue loop (resume-friendly).  
 3. On stop: print station, last action, how to `/ops-deliver` again or `/ops-next`.
+
+## Lifecycle success vs return-to-main
+
+Completing deliver through **finish** means the change worktree closeout path succeeded (and PR merge/archive as applicable). It does **not** mean the operator’s **primary** checkout already matches `origin/<base>` or that submodules are on branch `main`.
+
+Primary lagging `origin/main` alone is **not** a failed deliver when sync was not requested. After success, operators (or opt-in finish flags) may:
+
+```bash
+cd <primary> && git switch main && git pull --ff-only origin main
+git submodule update --init --recursive
+# expect submodule detached @ gitlink unless --attach-submodule-main was used safely
+```
+
+Or: `openspec-ops finish <change> --sync-primary [--sync-submodules] [--attach-submodule-main]` (default off).
 
 ## Mandatory reviews
 
@@ -98,6 +114,7 @@ Code table: `defaultDeliverAction` / `deliverActionAfterReview` in `src/next-ste
 
 - Do not run explore inside deliver.  
 - Do not auto `--force` finish.  
+- Do not enable primary sync flags on finish unless the operator explicitly opts in.  
 - Do not bypass merge checks.  
 - Do not remove `/ops-next`.  
 - Prefer worktree path from `where` for all OpenSpec writes after start.
