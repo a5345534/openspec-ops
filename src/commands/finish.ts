@@ -218,14 +218,7 @@ export function runFinish(
     const att = attachSubmodulesToMainIfSafe(ctx.primaryPath, {}, syncDeps);
     sync.attached = att.attached;
     sync.diverged = att.diverged;
-    if (att.diverged.length > 0 && att.attached.length === 0 && att.skipped.length >= 0) {
-      // partial if any diverged with some attached, else ok if only attached/skipped
-      sync.attachSubmoduleMain = att.attached.length > 0 ? "partial" : "partial";
-    } else if (att.diverged.length > 0) {
-      sync.attachSubmoduleMain = "partial";
-    } else {
-      sync.attachSubmoduleMain = "ok";
-    }
+    sync.attachSubmoduleMain = att.diverged.length > 0 ? "partial" : "ok";
     if (att.diverged.length > 0) {
       closeoutHints.messages.push(
         `submodule_main_diverged: ${att.diverged.join(", ")} (left at pin; no force)`,
