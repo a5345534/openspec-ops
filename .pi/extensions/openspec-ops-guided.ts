@@ -61,7 +61,17 @@ import {
   readMetricsRecords,
   resetMetricsData,
   setMetricsEnabled,
+  destroyMetricsSqlite,
+  detachMetricsSqlite,
+  getMetricsSqliteStatus,
+  initMetricsSqlite,
+  readMetricsSqlite,
+  rebuildMetricsSqlite,
+  resolveWorkspaceId,
+  syncMetricsSqlite,
   type MetricsAction,
+  type MetricsSqliteStatus,
+  type MetricsSqliteSyncResult,
 } from "../../src/lifecycle-metrics/index.js";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -114,6 +124,41 @@ function textContent(content: Array<{ type: string; text?: string }>): string {
     .join("\n");
 }
 
+function unquotePath(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  if (!text) return undefined;
+  if (
+    text.length >= 2 &&
+    ((text.startsWith('"') && text.endsWith('"')) ||
+      (text.startsWith("'") && text.endsWith("'")))
+  ) {
+    return text.slice(1, -1);
+  }
+  return text;
+}
+
+function formatSqliteStatus(status: MetricsSqliteStatus): string {
+  const sync = status.lastSyncAt == null
+    ? "never"
+    : new Date(status.lastSyncAt).toISOString();
+  return [
+    `SQLite feature: ${status.available ? "available" : "unavailable"}`,
+    `Configured: ${status.configured ? "yes" : "no"}`,
+    `Path: ${status.path ?? "(none)"}`,
+    `Exists: ${status.exists ? "yes" : "no"}; compatible: ${status.compatible == null ? "unknown" : status.compatible ? "yes" : "no"}`,
+    `Rows: ${status.rows ?? "unknown"}; last sync: ${sync}`,
+    ...(status.reason ? [`Status: ${status.reason}`] : []),
+  ].join("\n");
+}
+
+function formatSqliteSync(result: MetricsSqliteSyncResult, verb = "synchronized"): string {
+  return [
+    `SQLite metrics ${verb}: ${result.path}`,
+    `Scanned: ${result.scanned}; inserted: ${result.inserted}; duplicates: ${result.duplicates}`,
+    `Legacy: ${result.legacy}; malformed/read warnings: ${result.malformed}`,
+  ].join("\n");
+}
+
 export default function (pi: ExtensionAPI) {
   let active: WorkspaceState | null = null;
   const metricsAgentDir = getAgentDir();
@@ -126,12 +171,14 @@ export default function (pi: ExtensionAPI) {
   >();
 
   const ensureMetrics = (ctx: {
+    cwd: string;
     sessionManager: { getSessionId(): string };
     ui: { notify(message: string, level?: "info" | "warning" | "error"): void };
   }): LifecycleMetricsRuntime => {
     if (metricsRuntime) return metricsRuntime;
     metricsRuntime = new LifecycleMetricsRuntime({
       sessionIdHash: hashSessionId(ctx.sessionManager.getSessionId()),
+      workspaceId: () => resolveWorkspaceId(ctx.cwd),
       enabled: () => metricsEnabled,
       append: (record) => appendMetricsRecord(metricsAgentDir, record),
       onError: (error) => {
@@ -371,9 +418,10 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("ops-metrics", {
     description:
-      "Local opt-in lifecycle metrics: status|on|off|report [change]|export [change]|reset confirm.",
+      "Local opt-in metrics plus optional SQLite projection: status|on|off|report|export|reset|db.",
     handler: async (args, ctx) => {
-      const parts = (args ?? "").trim().split(/\s+/).filter(Boolean);
+      const raw = (args ?? "").trim();
+      const parts = raw.split(/\s+/).filter(Boolean);
       const sub = (parts[0] ?? "status").toLowerCase();
       try {
         if (sub === "on") {
@@ -394,48 +442,138 @@ export default function (pi: ExtensionAPI) {
         }
         if (sub === "status") {
           const data = readMetricsRecords(metricsAgentDir);
+          const sqlite = await getMetricsSqliteStatus(metricsAgentDir);
           ctx.ui.notify(
             [
               `Lifecycle metrics: ${metricsEnabled ? "enabled" : "disabled"}`,
               `Local root: ${metricsAgentDir}`,
-              `Records: ${data.records.length}; files: ${data.files}; malformed skipped: ${data.malformedLines}`,
+              `Records: ${data.records.length}; files: ${data.files}; legacy: ${data.legacyRecords}; malformed skipped: ${data.malformedLines}`,
+              `SQLite: ${sqlite.configured ? sqlite.path : "not configured"} (${sqlite.available ? "available" : "unavailable"})`,
               "No prompt/source/tool content is collected; no network telemetry.",
             ].join("\n"),
             "info",
           );
           return;
         }
-        if (sub === "report" || sub === "export") {
-          const change = firstKebab(parts[1]);
-          if (parts[1] && !change) {
+        if (sub === "db") {
+          const dbSub = (parts[1] ?? "status").toLowerCase();
+          if (dbSub === "status" && parts.length <= 2) {
             ctx.ui.notify(
-              `Usage: /ops-metrics ${sub} [kebab-change]`,
-              "warning",
+              formatSqliteStatus(await getMetricsSqliteStatus(metricsAgentDir)),
+              "info",
             );
             return;
           }
-          const data = readMetricsRecords(metricsAgentDir);
-          const records = change
-            ? data.records.filter((record) =>
-                "change" in record ? record.change === change : false,
-              )
-            : data.records;
-          if (sub === "export") {
+          if (dbSub === "init") {
+            const match = raw.match(/^db\s+init(?:\s+([\s\S]+))?$/i);
+            if (!match) {
+              ctx.ui.notify("Usage: /ops-metrics db init [absolute-local-path]", "warning");
+              return;
+            }
+            const path = unquotePath(match[1]);
+            const status = await initMetricsSqlite(metricsAgentDir, path);
             ctx.ui.notify(
-              JSON.stringify(
-                {
-                  schemaVersion: 1,
-                  change: change ?? null,
-                  malformedLines: data.malformedLines,
-                  records,
-                },
-                null,
-                2,
+              `SQLite projection initialized/attached without syncing.\n${formatSqliteStatus(status)}\nRun: /ops-metrics db sync`,
+              "info",
+            );
+            return;
+          }
+          if (dbSub === "sync" && parts.length === 2) {
+            ctx.ui.notify(
+              formatSqliteSync(await syncMetricsSqlite(metricsAgentDir)),
+              "info",
+            );
+            return;
+          }
+          if (dbSub === "rebuild") {
+            if ((parts[2] ?? "").toLowerCase() !== "confirm" || parts.length !== 3) {
+              ctx.ui.notify(
+                "Rebuild clears only the SQLite projection, then re-ingests retained JSONL. Confirm with: /ops-metrics db rebuild confirm",
+                "warning",
+              );
+              return;
+            }
+            ctx.ui.notify(
+              formatSqliteSync(
+                await rebuildMetricsSqlite(metricsAgentDir, true),
+                "rebuilt",
               ),
               "info",
             );
             return;
           }
+          if (dbSub === "detach" && parts.length === 2) {
+            const path = detachMetricsSqlite(metricsAgentDir);
+            ctx.ui.notify(
+              path
+                ? `SQLite projection detached; database kept: ${path}`
+                : "No SQLite projection was configured.",
+              "info",
+            );
+            return;
+          }
+          if (dbSub === "destroy") {
+            if ((parts[2] ?? "").toLowerCase() !== "confirm" || parts.length !== 3) {
+              ctx.ui.notify(
+                "Destroy deletes only the compatible configured SQLite projection. Confirm with: /ops-metrics db destroy confirm",
+                "warning",
+              );
+              return;
+            }
+            const result = await destroyMetricsSqlite(metricsAgentDir, true);
+            ctx.ui.notify(
+              `${result.deleted ? "Deleted" : "Detached missing"} SQLite projection: ${result.path}. JSONL kept.`,
+              "info",
+            );
+            return;
+          }
+          ctx.ui.notify(
+            "Usage: /ops-metrics db status|init [absolute-local-path]|sync|rebuild confirm|detach|destroy confirm",
+            "warning",
+          );
+          return;
+        }
+        if (sub === "report") {
+          const sqliteSource = (parts[1] ?? "").toLowerCase() === "--source";
+          if (sqliteSource) {
+            if ((parts[2] ?? "").toLowerCase() !== "sqlite" || parts.length > 4) {
+              ctx.ui.notify(
+                "Usage: /ops-metrics report --source sqlite [kebab-change]",
+                "warning",
+              );
+              return;
+            }
+            const change = firstKebab(parts[3]);
+            if (parts[3] && !change) {
+              ctx.ui.notify(
+                "Usage: /ops-metrics report --source sqlite [kebab-change]",
+                "warning",
+              );
+              return;
+            }
+            const data = await readMetricsSqlite(metricsAgentDir);
+            ctx.ui.notify(
+              formatMetricsReport(
+                buildMetricsReport(data.records, {
+                  ...(change ? { change } : {}),
+                  malformedLines: data.malformedLines,
+                  source: "sqlite",
+                  projection: {
+                    rows: data.rows,
+                    lastSyncAt: data.lastSyncAt,
+                  },
+                }),
+              ),
+              "info",
+            );
+            return;
+          }
+          const change = firstKebab(parts[1]);
+          if ((parts[1] && !change) || parts.length > 2) {
+            ctx.ui.notify("Usage: /ops-metrics report [kebab-change]", "warning");
+            return;
+          }
+          const data = readMetricsRecords(metricsAgentDir);
           ctx.ui.notify(
             formatMetricsReport(
               buildMetricsReport(data.records, {
@@ -447,10 +585,35 @@ export default function (pi: ExtensionAPI) {
           );
           return;
         }
+        if (sub === "export") {
+          const change = firstKebab(parts[1]);
+          if ((parts[1] && !change) || parts.length > 2) {
+            ctx.ui.notify("Usage: /ops-metrics export [kebab-change]", "warning");
+            return;
+          }
+          const data = readMetricsRecords(metricsAgentDir);
+          const records = change
+            ? data.records.filter((record) => record.change === change)
+            : data.records;
+          ctx.ui.notify(
+            JSON.stringify(
+              {
+                schemaVersion: 1,
+                change: change ?? null,
+                malformedLines: data.malformedLines,
+                records,
+              },
+              null,
+              2,
+            ),
+            "info",
+          );
+          return;
+        }
         if (sub === "reset") {
-          if ((parts[1] ?? "").toLowerCase() !== "confirm") {
+          if ((parts[1] ?? "").toLowerCase() !== "confirm" || parts.length !== 2) {
             ctx.ui.notify(
-              "Reset deletes local metrics records only. Confirm with: /ops-metrics reset confirm",
+              "Reset deletes JSONL metrics records only (SQLite is untouched). Confirm with: /ops-metrics reset confirm",
               "warning",
             );
             return;
@@ -459,11 +622,11 @@ export default function (pi: ExtensionAPI) {
           metricsRuntime = null;
           pendingShell.clear();
           ensureMetrics(ctx);
-          ctx.ui.notify("Local lifecycle metrics records deleted.", "info");
+          ctx.ui.notify("Local JSONL lifecycle metrics records deleted; SQLite untouched.", "info");
           return;
         }
         ctx.ui.notify(
-          "Usage: /ops-metrics status|on|off|report [change]|export [change]|reset confirm",
+          "Usage: /ops-metrics status|on|off|report [change]|report --source sqlite [change]|export [change]|reset confirm|db …",
           "warning",
         );
       } catch (error) {

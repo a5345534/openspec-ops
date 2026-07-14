@@ -437,13 +437,30 @@ Disabled by default. Collection and reports are mechanical: they do **not** call
 ```text
 /ops-metrics status
 /ops-metrics on
-/ops-metrics report [change]
+/ops-metrics report [change]        # authoritative JSONL source
 /ops-metrics export [change]
 /ops-metrics off                    # keeps existing data
-/ops-metrics reset confirm          # deletes local record files
+/ops-metrics reset confirm          # deletes JSONL only
 ```
 
-Records live under the Pi agent directory (`~/.pi/agent/openspec-ops/metrics/`, respecting `PI_CODING_AGENT_DIR`) as per-session JSONL. Only metadata is stored: change/action/round, model and raw usage/cache/cost, structured review counts/verdict, and deliver outcomes/error codes. Prompt/assistant prose, source, tool inputs/results, stderr, and secrets are not persisted; nothing is uploaded.
+Records live under the Pi agent directory (`~/.pi/agent/openspec-ops/metrics/`, respecting `PI_CODING_AGENT_DIR`) as per-session JSONL. New records have a unique record ID and a hashed machine-local primary-repository ID; absolute workspace paths are not recorded, linked worktrees share one ID, and unresolved/legacy workspace identity stays unknown. Only metadata is stored: change/action/round, model and raw usage/cache/cost, structured review counts/verdict, and deliver outcomes/error codes. Prompt/assistant prose, source, tool inputs/results, stderr, and secrets are not persisted; nothing is uploaded.
+
+### Optional local SQLite projection
+
+JSONL remains the append-only source of truth. SQLite is never created or written by metrics enablement, model turns, ordinary reports, or package updates. On a Node runtime that provides `node:sqlite`, an operator may explicitly create/attach and synchronize a rebuildable local projection:
+
+```text
+/ops-metrics db status
+/ops-metrics db init                              # default: <agentDir>/openspec-ops/metrics.sqlite3
+/ops-metrics db init /absolute/local/metrics.db   # spaces are accepted as the remaining path
+/ops-metrics db sync                              # idempotent full JSONL scan
+/ops-metrics report --source sqlite [change]      # does not implicitly sync
+/ops-metrics db rebuild confirm                   # clears DB projection, re-ingests JSONL
+/ops-metrics db detach                            # keeps the DB file
+/ops-metrics db destroy confirm                   # deletes only compatible configured DB + sidecars
+```
+
+A runtime without `node:sqlite` reports the DB feature unavailable while JSONL collection/reporting continues. SQLite configuration is independent from metrics on/off; JSON reset never modifies the database, and detach/destroy never modifies JSONL. The reserved `.jsonl` suffix is rejected for database paths so a projection cannot collide with session source files. Use a local filesystem—concurrent direct writes to one SQLite file over NFS/SMB/cloud-synced folders are unsupported. The projection makes no network or model call and DB failures cannot block lifecycle work.
 
 Reports answer:
 

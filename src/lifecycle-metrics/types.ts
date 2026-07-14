@@ -1,6 +1,7 @@
 import type { LifecycleStation, NextActionId } from "../next-step/edges.js";
 
-export const METRICS_SCHEMA_VERSION = 1 as const;
+export const METRICS_SCHEMA_VERSION = 2 as const;
+export const LEGACY_METRICS_SCHEMA_VERSION = 1 as const;
 
 export type MetricsAction = NextActionId | "ops-deliver-overhead" | "unknown";
 export type AttributionSource = "observed" | "declared" | "unknown";
@@ -36,6 +37,8 @@ export type ContextSnapshot = {
 
 type BaseRecord = {
   schemaVersion: typeof METRICS_SCHEMA_VERSION;
+  recordId: string;
+  workspaceId: string | null;
   timestamp: number;
   sessionIdHash: string;
 };
