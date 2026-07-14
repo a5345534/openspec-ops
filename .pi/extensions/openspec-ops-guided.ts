@@ -5,11 +5,16 @@
  * - /ops-start manual worktree (explicit only)
  * - /ops-next station menu (ui.select or text; user choice only)
  * - /ops-deliver binds slash change name then skill follow-up (batch start→finish)
+ * - /ops-metrics local opt-in lifecycle usage/review/deliver reporting
  * - before_agent_start: inject config + optional one-shot workspace handoff after /ops-start
  *
  * REMOVED: auto-ensure on propose, auto-review settle fire, auto-finish, auto-impl-review.
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  getAgentDir,
+  isToolCallEventType,
+  type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +38,7 @@ import {
   listCandidateChanges,
   optionFromSelectLabel,
   resolvePrSignals,
+  type LifecycleStation,
 } from "../../src/next-step/index.js";
 import { resolveOpsBin, runOps } from "../../src/ops-runtime/run-ops.js";
 import {
@@ -40,6 +46,23 @@ import {
   parseSlashChangeAndRest,
 } from "../../src/ops-runtime/change-name.js";
 import { resolvePackageRoot } from "../../src/package-root.js";
+import {
+  LifecycleMetricsRuntime,
+  actionFromShellCommand,
+  appendMetricsRecord,
+  buildMetricsReport,
+  changeFromShellCommand,
+  formatMetricsReport,
+  hashSessionId,
+  hasPriorUnsuccessfulAttempt,
+  parseJsonEnvelope,
+  parseLifecycleSlash,
+  readMetricsConfig,
+  readMetricsRecords,
+  resetMetricsData,
+  setMetricsEnabled,
+  type MetricsAction,
+} from "../../src/lifecycle-metrics/index.js";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolvePackageRoot(EXT_DIR);
@@ -56,8 +79,163 @@ function firstKebab(args: string | undefined): string | null {
   return first && CHANGE_NAME_RE.test(first) ? first : null;
 }
 
+/**
+ * Metrics must not trigger PR/network lookups. Return a locally provable station;
+ * states that require PR knowledge (applied vs shipped vs merged) stay unknown.
+ */
+function localStationForMetrics(change: string, cwd: string): LifecycleStation {
+  const roots = [PACKAGE_ROOT, cwd].filter(Boolean);
+  let worktreeFound = false;
+  const bin = resolveOpsBin({ projectRoot: PACKAGE_ROOT });
+  if (bin) {
+    const where = runOps(bin, ["where", change], { cwd });
+    if (where.json?.ok && where.json.result) {
+      const wr = where.json.result;
+      worktreeFound = Boolean(wr.found);
+      if (wr.path) roots.push(String(wr.path));
+      if (wr.primaryPath) roots.push(String(wr.primaryPath));
+    }
+  }
+  const local = detectLifecycleStation({
+    change,
+    roots: [...new Set(roots)],
+    worktreeFound,
+    hasOpenPr: false,
+    hasMergedPr: false,
+  });
+  // Locally "applied" is ambiguous once a PR exists/merges; do not guess.
+  return local === "applied" ? "unknown" : local;
+}
+
+function textContent(content: Array<{ type: string; text?: string }>): string {
+  return content
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text ?? "")
+    .join("\n");
+}
+
 export default function (pi: ExtensionAPI) {
   let active: WorkspaceState | null = null;
+  const metricsAgentDir = getAgentDir();
+  let metricsEnabled = readMetricsConfig(metricsAgentDir).enabled;
+  let metricsRuntime: LifecycleMetricsRuntime | null = null;
+  let metricsWarned = false;
+  const pendingShell = new Map<
+    string,
+    { action: MetricsAction; change: string | null }
+  >();
+
+  const ensureMetrics = (ctx: {
+    sessionManager: { getSessionId(): string };
+    ui: { notify(message: string, level?: "info" | "warning" | "error"): void };
+  }): LifecycleMetricsRuntime => {
+    if (metricsRuntime) return metricsRuntime;
+    metricsRuntime = new LifecycleMetricsRuntime({
+      sessionIdHash: hashSessionId(ctx.sessionManager.getSessionId()),
+      enabled: () => metricsEnabled,
+      append: (record) => appendMetricsRecord(metricsAgentDir, record),
+      onError: (error) => {
+        if (metricsWarned) return;
+        metricsWarned = true;
+        ctx.ui.notify(
+          `openspec-ops metrics unavailable (lifecycle continues): ${error instanceof Error ? error.message : String(error)}`,
+          "warning",
+        );
+      },
+    });
+    return metricsRuntime;
+  };
+
+  pi.on("session_start", async (_event, ctx) => {
+    metricsEnabled = readMetricsConfig(metricsAgentDir).enabled;
+    metricsRuntime = null;
+    metricsWarned = false;
+    pendingShell.clear();
+    ensureMetrics(ctx);
+  });
+
+  pi.on("input", async (event, ctx) => {
+    if (!metricsEnabled) return { action: "continue" as const };
+    const parsed = parseLifecycleSlash(event.text);
+    if (parsed) {
+      ensureMetrics(ctx).setAction(
+        parsed.change,
+        parsed.action,
+        "observed",
+        null,
+      );
+    }
+    return { action: "continue" as const };
+  });
+
+  pi.on("tool_call", async (event, ctx) => {
+    if (!metricsEnabled || !isToolCallEventType("bash", event)) return;
+    const action = actionFromShellCommand(event.input.command);
+    if (!action) return;
+    const runtime = ensureMetrics(ctx);
+    const change =
+      changeFromShellCommand(event.input.command) ?? runtime.activeContext.change;
+    runtime.setAction(change, action, "observed", null);
+    pendingShell.set(event.toolCallId, { action, change });
+  });
+
+  pi.on("tool_result", async (event, ctx) => {
+    if (!metricsEnabled) return;
+    const pending = pendingShell.get(event.toolCallId);
+    if (!pending) return;
+    pendingShell.delete(event.toolCallId);
+    const envelope = parseJsonEnvelope(textContent(event.content));
+    ensureMetrics(ctx).noteActionResult(
+      pending.action,
+      envelope?.ok ?? !event.isError,
+      envelope?.errorCode ?? (event.isError ? "tool_failed" : undefined),
+    );
+  });
+
+  pi.on("turn_end", async (event, ctx) => {
+    if (!metricsEnabled || event.message.role !== "assistant") return;
+    const usage = event.message.usage;
+    ensureMetrics(ctx).recordTurn({
+      text: textContent(event.message.content),
+      provider: event.message.provider,
+      model: event.message.model,
+      ...(event.message.responseModel
+        ? { responseModel: event.message.responseModel }
+        : {}),
+      reasoningLevel: pi.getThinkingLevel(),
+      usage: {
+        input: usage.input,
+        output: usage.output,
+        cacheRead: usage.cacheRead,
+        cacheWrite: usage.cacheWrite,
+        ...(usage.reasoning == null ? {} : { reasoning: usage.reasoning }),
+        totalTokens: usage.totalTokens,
+        cost: {
+          input: usage.cost.input,
+          output: usage.cost.output,
+          cacheRead: usage.cost.cacheRead,
+          cacheWrite: usage.cost.cacheWrite,
+          total: usage.cost.total,
+        },
+      },
+      context: ctx.getContextUsage() ?? null,
+    });
+  });
+
+  pi.on("agent_settled", async (_event, ctx) => {
+    if (!metricsEnabled) return;
+    const runtime = ensureMetrics(ctx);
+    const change = runtime.activeAttemptChange;
+    let station: LifecycleStation = "unknown";
+    if (change) {
+      try {
+        station = localStationForMetrics(change, ctx.cwd);
+      } catch {
+        station = "unknown";
+      }
+    }
+    runtime.settleAgent(station);
+  });
 
   pi.on("before_agent_start", async () => {
     const configBlock = formatConfigInjection(process.env);
@@ -187,6 +365,112 @@ export default function (pi: ExtensionAPI) {
         );
       } catch (err) {
         ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
+      }
+    },
+  });
+
+  pi.registerCommand("ops-metrics", {
+    description:
+      "Local opt-in lifecycle metrics: status|on|off|report [change]|export [change]|reset confirm.",
+    handler: async (args, ctx) => {
+      const parts = (args ?? "").trim().split(/\s+/).filter(Boolean);
+      const sub = (parts[0] ?? "status").toLowerCase();
+      try {
+        if (sub === "on") {
+          setMetricsEnabled(metricsAgentDir, true);
+          metricsEnabled = true;
+          ensureMetrics(ctx);
+          ctx.ui.notify(
+            `Lifecycle metrics enabled (local only): ${metricsAgentDir}`,
+            "info",
+          );
+          return;
+        }
+        if (sub === "off") {
+          setMetricsEnabled(metricsAgentDir, false);
+          metricsEnabled = false;
+          ctx.ui.notify("Lifecycle metrics disabled. Existing local data kept.", "info");
+          return;
+        }
+        if (sub === "status") {
+          const data = readMetricsRecords(metricsAgentDir);
+          ctx.ui.notify(
+            [
+              `Lifecycle metrics: ${metricsEnabled ? "enabled" : "disabled"}`,
+              `Local root: ${metricsAgentDir}`,
+              `Records: ${data.records.length}; files: ${data.files}; malformed skipped: ${data.malformedLines}`,
+              "No prompt/source/tool content is collected; no network telemetry.",
+            ].join("\n"),
+            "info",
+          );
+          return;
+        }
+        if (sub === "report" || sub === "export") {
+          const change = firstKebab(parts[1]);
+          if (parts[1] && !change) {
+            ctx.ui.notify(
+              `Usage: /ops-metrics ${sub} [kebab-change]`,
+              "warning",
+            );
+            return;
+          }
+          const data = readMetricsRecords(metricsAgentDir);
+          const records = change
+            ? data.records.filter((record) =>
+                "change" in record ? record.change === change : false,
+              )
+            : data.records;
+          if (sub === "export") {
+            ctx.ui.notify(
+              JSON.stringify(
+                {
+                  schemaVersion: 1,
+                  change: change ?? null,
+                  malformedLines: data.malformedLines,
+                  records,
+                },
+                null,
+                2,
+              ),
+              "info",
+            );
+            return;
+          }
+          ctx.ui.notify(
+            formatMetricsReport(
+              buildMetricsReport(data.records, {
+                ...(change ? { change } : {}),
+                malformedLines: data.malformedLines,
+              }),
+            ),
+            "info",
+          );
+          return;
+        }
+        if (sub === "reset") {
+          if ((parts[1] ?? "").toLowerCase() !== "confirm") {
+            ctx.ui.notify(
+              "Reset deletes local metrics records only. Confirm with: /ops-metrics reset confirm",
+              "warning",
+            );
+            return;
+          }
+          resetMetricsData(metricsAgentDir);
+          metricsRuntime = null;
+          pendingShell.clear();
+          ensureMetrics(ctx);
+          ctx.ui.notify("Local lifecycle metrics records deleted.", "info");
+          return;
+        }
+        ctx.ui.notify(
+          "Usage: /ops-metrics status|on|off|report [change]|export [change]|reset confirm",
+          "warning",
+        );
+      } catch (error) {
+        ctx.ui.notify(
+          `Metrics command failed (lifecycle unaffected): ${error instanceof Error ? error.message : String(error)}`,
+          "warning",
+        );
       }
     },
   });
@@ -329,6 +613,19 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
+      if (metricsEnabled) {
+        try {
+          const prior = readMetricsRecords(metricsAgentDir).records;
+          ensureMetrics(ctx).beginDeliver(
+            change,
+            localStationForMetrics(change, ctx.cwd),
+            hasPriorUnsuccessfulAttempt(prior, change),
+          );
+        } catch {
+          // Metrics are fail-open; deliver still runs.
+        }
+      }
+
       const lines = [
         `Run the ops-deliver skill for change \`${change}\` only.`,
         `REQUIRED: change name is \`${change}\` (kebab-case). Do not claim the name is missing.`,
@@ -340,6 +637,11 @@ export default function (pi: ExtensionAPI) {
         pi.sendUserMessage(lines.join("\n"), { deliverAs: "followUp" });
         ctx.ui.notify(`ops-deliver scheduled for ${change}`, "info");
       } else {
+        try {
+          metricsRuntime?.settleDeliver(localStationForMetrics(change, ctx.cwd));
+        } catch {
+          metricsRuntime?.settleDeliver("unknown");
+        }
         ctx.ui.notify(
           `No sendUserMessage — run ops-deliver for ${change} manually.\n${lines.join("\n")}`,
           "warning",

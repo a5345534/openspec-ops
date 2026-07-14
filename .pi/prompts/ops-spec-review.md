@@ -22,10 +22,20 @@ OpenSpec **plan/spec** quality gate: **phase check first**, then **full review r
 1. Resolve change via `openspec-ops where` / `openspec status` (prefer worktree path); scan primary too for archive.
 2. **Phase:** if archived-only or active+archived split-brain → print phase_mismatch and **stop** (unless historical/force override).
 3. Else loop (max **full** reviews from config):
+   - Emit `<!-- ops-metrics:stage {"change":"<change>","action":"ops-spec-review","round":<N>} -->`
    - Full review; major vs minor (uncertain → minor)
    - No major → ready for apply
    - Else fix + in-round verify; then next full review if budget remains
+   - End every full round with the structured review marker below
 4. Last round fixed but no confirmatory full review left, or majors remain → needs human.
+
+## Metrics marker (every full round)
+
+```text
+<!-- ops-metrics:review {"change":"<change>","reviewType":"spec","round":<N>,"newMajors":<int>,"newMinors":<int>,"majorsFixed":<int>,"fixVerificationPassed":<bool>,"verdict":"continue|ready|needs_human"} -->
+```
+
+Counts only; no finding prose/source/tool output. Hidden marker is harmless when metrics are disabled. No telemetry tool/model call.
 
 ## Output
 

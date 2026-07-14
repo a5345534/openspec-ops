@@ -424,10 +424,34 @@ Extension: `.pi/extensions/openspec-ops-guided.ts` (guided lifecycle).
 - **`/ops-next [change]`** — hard-coded next-step menu (`ctx.ui.select` or text; never auto-picks)
 - **`/ops-deliver <change>`** — batch start→finish after explore (reviews required; merge consent on invoke); extension binds slash args then skill follow-up  
 - **`/ops-config`** — session max-rounds for reviews  
+- **`/ops-metrics`** — local opt-in model/cost, review-round, and deliver-reliability metrics (no LLM/report turn)
 
 **Removed:** auto-ensure on propose, auto-review settle fire, auto-finish, auto-impl-review after ship, intercept ensure-before-new-change.
 
 Stations (main menu): `no_workspace`→start; `proposed`→spec-review|apply; `applied`→ship; `shipped`→impl-review|ship|merge; `merged`→archive; `archived`→finish.
+
+## Local lifecycle metrics (`/ops-metrics`)
+
+Disabled by default. Collection and reports are mechanical: they do **not** call a model, queue a follow-up, expose a telemetry tool, or alter lifecycle gates.
+
+```text
+/ops-metrics status
+/ops-metrics on
+/ops-metrics report [change]
+/ops-metrics export [change]
+/ops-metrics off                    # keeps existing data
+/ops-metrics reset confirm          # deletes local record files
+```
+
+Records live under the Pi agent directory (`~/.pi/agent/openspec-ops/metrics/`, respecting `PI_CODING_AGENT_DIR`) as per-session JSONL. Only metadata is stored: change/action/round, model and raw usage/cache/cost, structured review counts/verdict, and deliver outcomes/error codes. Prompt/assistant prose, source, tool inputs/results, stderr, and secrets are not persisted; nothing is uploaded.
+
+Reports answer:
+
+- **A — model/cost/cache:** usage by action/model plus attribution coverage
+- **B — review rounds:** cost, new-major rate, ready rate, and missing result markers per round
+- **C — deliver reliability:** attempts, first-invocation completion, resumes, needs-human/incomplete, hard stops
+
+Because `/ops-deliver` remains skill-orchestrated, hidden metadata-only skill markers provide some child-stage attribution. Missing/invalid markers stay in `unknown`; reports never use another model to guess. Metrics/storage failures are fail-open and cannot block start/review/apply/ship/merge/archive/finish.
 
 ## License
 

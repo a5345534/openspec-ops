@@ -20,10 +20,20 @@ After **ship**, before merge: **full review rounds** of implementation vs specs/
 1. `openspec-ops where "<change>" --json` → worktree cwd.
 2. PR diff via `gh` if possible; else diff vs base.
 3. Loop (max **full** reviews from config):
+   - Emit `<!-- ops-metrics:stage {"change":"<change>","action":"ops-impl-review","round":<N>} -->`
    - Full review + tests
    - No major → ready for human merge
    - Else fix, commit, push, in-round verify; then next full review if budget remains
+   - End every full round with the structured review marker below
 4. Last round fixed without confirmatory full review, or majors remain → needs human.
+
+## Metrics marker (every full round)
+
+```text
+<!-- ops-metrics:review {"change":"<change>","reviewType":"impl","round":<N>,"newMajors":<int>,"newMinors":<int>,"majorsFixed":<int>,"fixVerificationPassed":<bool>,"verdict":"continue|ready|needs_human"} -->
+```
+
+Counts only; no finding prose/source/tool output. Hidden marker is harmless when metrics are disabled. No telemetry tool/model call.
 
 ## Guardrails
 
