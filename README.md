@@ -466,11 +466,13 @@ JSONL remains the append-only source of truth. SQLite is never created or writte
 
 A runtime without `node:sqlite` reports the DB feature unavailable while JSONL collection/reporting continues. SQLite configuration is independent from metrics on/off; JSON reset never modifies the database, and detach/destroy never modifies JSONL. The reserved `.jsonl` suffix is rejected for database paths so a projection cannot collide with session source files. Use a local filesystem—concurrent direct writes to one SQLite file over NFS/SMB/cloud-synced folders are unsupported. The projection makes no network or model call and DB failures cannot block lifecycle work.
 
-Reports answer:
+Reports use compact fixed-width plain text with aligned numeric columns, bounded labels, consistent units, and explicit action/model totals:
 
 - **A — model/cost/cache:** usage by action/model plus attribution coverage
 - **B — review rounds:** cost, new-major rate, ready rate, and missing result markers per round
 - **C — deliver reliability:** attempts, first-invocation completion, resumes, needs-human/incomplete, hard stops
+
+The monetary columns are **USD estimates copied from Pi usage values**. Pi generally derives them from provider-reported token counts and the selected model's registry rates; openspec-ops does not maintain a pricing table or calculate provider invoices. These estimates are not subscription or incremental billing charges. A `$0` estimate can mean unavailable pricing or configured zero rates, so the report does not claim that zero means a model was free.
 
 Because `/ops-deliver` remains skill-orchestrated, hidden metadata-only skill markers provide some child-stage attribution. Missing/invalid markers stay in `unknown`; reports never use another model to guess. Metrics/storage failures are fail-open and cannot block start/review/apply/ship/merge/archive/finish.
 
