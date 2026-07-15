@@ -227,6 +227,13 @@ describe("optional SQLite metrics projection", () => {
         }),
       );
       expect(report).toContain("Source: SQLite projection; rows: 1; last sync:");
+      expect(report).toContain(
+        "Cost: USD estimate (Pi model-registry rates x provider token usage)",
+      );
+      expect(report).toContain(
+        "bucket                  turns    input   output   c-read  c-write   reason    USD est.  ctx max",
+      );
+      expect(report).toContain("TOTAL");
 
       resetMetricsData(agentDir);
       expect(existsSync(path)).toBe(true);

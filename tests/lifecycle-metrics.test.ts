@@ -172,6 +172,60 @@ describe("lifecycle metrics reports", () => {
     expect(formatMetricsReport(report)).toContain("Attribution coverage: 50.0%");
   });
 
+  it("renders an exact compact empty report with cost provenance", () => {
+    expect(formatMetricsReport(buildMetricsReport([]))).toBe(
+      [
+        "openspec-ops lifecycle metrics",
+        "Source: JSONL (authoritative); records: 0",
+        "Cost: USD estimate (Pi model-registry rates x provider token usage)",
+        "Note: openspec-ops aggregates Pi values; $0 may mean unavailable or zero rates.",
+        "",
+        "A. Usage by action",
+        "(no turn records)",
+        "Attribution coverage: n/a",
+        "",
+        "By model",
+        "(no model records)",
+        "",
+        "B. Review round yield",
+        "(no review records)",
+        "",
+        "C. Deliver reliability",
+        "metric                                value",
+        "-------------------------------  ----------",
+        "attempts                                  0",
+        "changes                                   0",
+        "completed attempts                        0",
+        "completed changes                         0",
+        "first-invocation completion             n/a",
+        "resumes                                   0",
+        "hard stops                                0",
+        "needs human                               0",
+        "incomplete                                0",
+      ].join("\n"),
+    );
+  });
+
+  it("aligns usage totals and bounds long model labels", () => {
+    const longModelTurn = turn("opsx-apply", "observed", 2);
+    longModelTurn.model = {
+      provider: "provider",
+      id: "a-model-name-that-is-much-too-long",
+    };
+    const output = formatMetricsReport(buildMetricsReport([longModelTurn]));
+
+    expect(output).toContain(
+      [
+        "bucket                  turns    input   output   c-read  c-write   reason    USD est.  ctx max",
+        "----------------------  -----  -------  -------  -------  -------  -------  ----------  -------",
+        "opsx-apply                  1      100       20       80       10        5     $2.0000    10.0%",
+        "TOTAL                       1      100       20       80       10        5     $2.0000    10.0%",
+      ].join("\n"),
+    );
+    expect(output).toContain("provider/a-model-name~");
+    expect(output).not.toContain("a-model-name-that-is-much-too-long");
+  });
+
   it("aggregates review round yield and cost", () => {
     const reviewRecords: ReviewRoundMetricRecord[] = [
       {
