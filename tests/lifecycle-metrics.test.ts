@@ -226,6 +226,15 @@ describe("lifecycle metrics reports", () => {
     expect(output).not.toContain("a-model-name-that-is-much-too-long");
   });
 
+  it("compacts oversized numeric cells without identifier-style truncation", () => {
+    const output = formatMetricsReport(
+      buildMetricsReport([turn("opsx-apply", "observed", 123_456_789)]),
+    );
+
+    expect(output).toContain("$1.23e+8");
+    expect(output).not.toContain("$1234567~");
+  });
+
   it("aggregates review round yield and cost", () => {
     const reviewRecords: ReviewRoundMetricRecord[] = [
       {

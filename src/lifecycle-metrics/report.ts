@@ -305,8 +305,24 @@ function fitCell(value: string, width: number): string {
   return `${value.slice(0, width - 1)}~`;
 }
 
+function fitNumericCell(value: string, width: number): string {
+  if (value.length <= width) return value;
+  const match = /^(\$?)(-?\d+(?:\.\d+)?)([kMBTQ%]?)$/.exec(value);
+  if (match) {
+    const [, prefix, numeric, suffix] = match;
+    for (let precision = 2; precision >= 0; precision -= 1) {
+      const compact = `${prefix}${Number(numeric).toExponential(precision)}${suffix}`;
+      if (compact.length <= width) return compact;
+    }
+  }
+  return fitCell(value, width);
+}
+
 function tableCell(value: string | number, column: TableColumn): string {
-  const fitted = fitCell(String(value), column.width);
+  const raw = String(value);
+  const fitted = column.align === "right"
+    ? fitNumericCell(raw, column.width)
+    : fitCell(raw, column.width);
   return column.align === "right"
     ? fitted.padStart(column.width)
     : fitted.padEnd(column.width);
