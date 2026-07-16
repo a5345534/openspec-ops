@@ -189,6 +189,7 @@ describe("runFinish sync integration", () => {
         worktrees: [],
       }),
       prepare: () => ({ deinited: [] }),
+      isDirty: () => false,
       removeWorktree: () => {},
       branchCleanup: () => ({
         attempted: false,

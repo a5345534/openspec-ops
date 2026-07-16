@@ -1,4 +1,4 @@
-import { removeWorktree } from "../git.js";
+import { isDirty, removeWorktree } from "../git.js";
 import {
   assertChangeName,
   defaultBranch,
@@ -38,6 +38,7 @@ export type FinishDeps = {
   locate: typeof locateWorkspace;
   resolveRepo: typeof resolveRepoContext;
   prepare: typeof prepareWorktreeForRemoval;
+  isDirty: typeof isDirty;
   removeWorktree: typeof removeWorktree;
   branchCleanup: typeof cleanupMergedChangeBranches;
   branchCleanupDeps?: BranchCleanupDeps;
@@ -49,6 +50,7 @@ const defaultFinishDeps: FinishDeps = {
   locate: locateWorkspace,
   resolveRepo: resolveRepoContext,
   prepare: prepareWorktreeForRemoval,
+  isDirty,
   removeWorktree,
   branchCleanup: cleanupMergedChangeBranches,
 };
@@ -93,8 +95,9 @@ export function runFinish(
     const failContainment = (msg: string): never => {
       throw new CliError(
         "submodule_teardown_failed",
-        `Cannot remove worktree ${loc.path}: still contains submodules after prepare. ` +
-          `Manually: cd ${loc.path} && git submodule deinit -f -- <path>, remove residual dirs if empty, then retry finish. ${msg}`,
+        `Cannot remove worktree ${loc.path}: Git still reports submodule containment after preparation. ` +
+          `Verify the parent and submodules are clean, then manually inspect with: ` +
+          `git -C ${ctx.cwd} worktree remove --force ${loc.path}. ${msg}`,
         { path: loc.path, change: loc.change, cause: msg },
       );
     };
@@ -102,28 +105,33 @@ export function runFinish(
     try {
       deps.removeWorktree(ctx.cwd, loc.path, force);
     } catch (err) {
-      if (err instanceof CliError) {
-        const msg = err.message || "";
-        if (isSubmoduleContainmentError(msg)) {
-          // Re-prepare (clear residual dirs) and retry remove once
-          deps.prepare(loc.path);
-          try {
-            deps.removeWorktree(ctx.cwd, loc.path, force);
-          } catch (err2) {
-            if (err2 instanceof CliError) {
-              const msg2 = err2.message || "";
-              if (isSubmoduleContainmentError(msg2)) {
-                failContainment(msg2);
-              }
-              throw err2;
-            }
-            throw err2;
-          }
-        } else {
-          throw err;
+      if (!(err instanceof CliError)) throw err;
+      const msg = err.message || "";
+      if (!isSubmoduleContainmentError(msg)) throw err;
+      if (force) failContainment(msg);
+
+      // Git can require --force solely because the clean worktree's index contains
+      // a submodule gitlink. This is not operator consent to discard dirty data:
+      // verify cleanliness again immediately before the structural-force retry.
+      if (deps.isDirty(loc.path)) {
+        throw new CliError(
+          "worktree_dirty",
+          `Worktree became dirty while preparing submodules: ${loc.path}. ` +
+            `No structural-force removal was attempted. Restore/commit the worktree and retry finish.`,
+          { path: loc.path, change: loc.change, phase: "post_prepare" },
+        );
+      }
+
+      try {
+        deps.removeWorktree(ctx.cwd, loc.path, true);
+      } catch (structuralError) {
+        if (
+          structuralError instanceof CliError &&
+          isSubmoduleContainmentError(structuralError.message || "")
+        ) {
+          failContainment(structuralError.message || "");
         }
-      } else {
-        throw err;
+        throw structuralError;
       }
     }
     worktreeRemoved = true;

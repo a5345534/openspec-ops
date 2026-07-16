@@ -31,6 +31,7 @@ function baseDeps(over: Partial<FinishDeps> = {}): FinishDeps {
       worktrees: [],
     }),
     prepare: () => ({ deinited: [] }),
+    isDirty: () => false,
     removeWorktree: () => {},
     branchCleanup: () => ({
       attempted: false,
