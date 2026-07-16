@@ -45,6 +45,15 @@ describe("guided extension runtime handoff", () => {
     expect(source).not.toContain('deliverAs: "steer"');
   });
 
+  it("tracks genuine operator language and injects it into every handoff", () => {
+    expect(source).toContain('event.source !== "extension"');
+    expect(source).toContain("inferResponseLanguage(text, responseLanguage)");
+    expect(source).toContain("restoreResponseLanguage(ctx.sessionManager.getEntries())");
+    expect(source).toContain("formatResponseLanguageContract(responseLanguage)");
+    expect(source).toContain("responseLanguageContract:");
+    expect(source).toContain("RESPONSE_LANGUAGE_ENTRY_TYPE");
+  });
+
   it("injects runtime context without writing project configuration", () => {
     const before = source.slice(
       source.indexOf('pi.on("before_agent_start"'),

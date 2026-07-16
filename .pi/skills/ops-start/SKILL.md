@@ -15,6 +15,10 @@ metadata:
 
 # ops-start
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 Ensure a **git workspace** exists for a change name.
 
 This skill only runs `openspec-ops start`. It does **not** create OpenSpec

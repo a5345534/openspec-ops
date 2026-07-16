@@ -96,10 +96,12 @@ describe("package-affine openspec-ops runtime resolution", () => {
         change: "demo-change",
         objective: "test objective",
         runtime: result,
+        responseLanguageContract: "REQUIRED RESPONSE LANGUAGE: zh-Hant",
       });
       expect(followup).toContain("REQUIRED: change name is `demo-change`");
       expect(followup).toContain(binding);
       expect(followup).toContain("Optional objective: test objective");
+      expect(followup).toContain("REQUIRED RESPONSE LANGUAGE: zh-Hant");
       expect(runOps(result.path, ["where", "demo-change"]).code).toBe(0);
     } finally {
       rmSync(root, { recursive: true, force: true });

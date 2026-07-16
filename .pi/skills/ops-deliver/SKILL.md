@@ -14,6 +14,10 @@ metadata:
 
 # ops-deliver
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 **Batch happy path** after **explore is finished**.  
 One command: **start → finish** for a named change.
 

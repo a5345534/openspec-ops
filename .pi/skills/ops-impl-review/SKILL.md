@@ -14,6 +14,10 @@ metadata:
 
 # ops-impl-review
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 **Post-ship implementation quality gate** (code vs OpenSpec plan).  
 Runs **after** `openspec-ops ship` / `/ops-ship` and **before** human merge.
 

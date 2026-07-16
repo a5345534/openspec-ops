@@ -13,6 +13,10 @@ metadata:
 
 # ops-doctor
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 Read-only health report for workspaces.
 
 ## Shared runtime rules
