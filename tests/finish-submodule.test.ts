@@ -293,7 +293,9 @@ describe("runFinish real submodule gitlink integration", () => {
     return result.stdout.trim();
   }
 
-  function fixture(mode: "initialized" | "deinitialized" | "dirty-submodule") {
+  function fixture(
+    mode: "initialized" | "deinitialized" | "feature-branch" | "dirty-submodule",
+  ) {
     const root = mkdtempSync(join(tmpdir(), "ops-fin-real-sub-"));
     const submodule = join(root, "submodule");
     const primary = join(root, "primary");
@@ -337,6 +339,10 @@ describe("runFinish real submodule gitlink integration", () => {
 
     if (mode === "deinitialized") {
       git(worktree, "submodule", "deinit", "-f", "--", "modules/sub");
+    } else if (mode === "feature-branch") {
+      const subPath = join(worktree, "modules/sub");
+      git(subPath, "switch", "-qc", "demo-change");
+      git(subPath, "update-ref", "refs/remotes/origin/demo-change", "HEAD");
     } else if (mode === "dirty-submodule") {
       writeFileSync(join(worktree, "modules/sub/tracked.txt"), "dirty\n");
     }
@@ -423,6 +429,35 @@ describe("runFinish real submodule gitlink integration", () => {
       }
     });
   }
+
+  it("reports matching real submodule refs without pruning them", () => {
+    const f = fixture("feature-branch");
+    try {
+      const result = runFinish(
+        { change: "demo-change", repo: f.primary, json: true },
+        realDeps(f.primary, f.worktree),
+      );
+      expect(result.submoduleBranchDiagnostics).toEqual([
+        {
+          code: "submodule_change_branch_local",
+          path: "modules/sub",
+          branch: "demo-change",
+          remote: null,
+          current: true,
+        },
+        {
+          code: "submodule_change_branch_remote_tracking",
+          path: "modules/sub",
+          branch: "demo-change",
+          remote: "origin",
+          current: true,
+        },
+      ]);
+      expect(result.forced).toBe(false);
+    } finally {
+      f.cleanup();
+    }
+  });
 
   it("blocks a dirty real submodule without operator force", () => {
     const f = fixture("dirty-submodule");

@@ -92,6 +92,92 @@ describe("runFinish closeout", () => {
     expect(r.branchDeleted).toBe(true);
   });
 
+  it("captures residual submodule refs for the resolved branch before teardown", () => {
+    const probeBranches = vi.fn(() => [
+      {
+        code: "submodule_change_branch_local" as const,
+        path: "aos-core",
+        branch: "release-x",
+        remote: null,
+        current: true,
+      },
+      {
+        code: "submodule_change_branch_remote_tracking" as const,
+        path: "aos-core",
+        branch: "release-x",
+        remote: "origin",
+        current: true,
+      },
+    ]);
+    const prepare = vi.fn(() => ({ deinited: [], cleared: [] }));
+    const result = runFinish(
+      { ...opts, branch: "release-x" },
+      baseDeps({
+        locate: () => whereOk({ branch: "release-x" }),
+        probeBranches,
+        prepare,
+      }),
+    );
+
+    expect(probeBranches).toHaveBeenCalledWith(
+      "/repo/.worktrees/add-dark-mode",
+      "release-x",
+    );
+    expect(probeBranches.mock.invocationCallOrder[0]).toBeLessThan(
+      prepare.mock.invocationCallOrder[0]!,
+    );
+    expect(result.submoduleBranchDiagnostics).toEqual([
+      expect.objectContaining({
+        code: "submodule_change_branch_local",
+        path: "aos-core",
+        branch: "release-x",
+      }),
+      expect.objectContaining({
+        code: "submodule_change_branch_remote_tracking",
+        remote: "origin",
+      }),
+    ]);
+  });
+
+  it("prints scoped human residual diagnostics without claiming deletion", () => {
+    const output: string[] = [];
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        output.push(String(chunk));
+        return true;
+      });
+    try {
+      runFinish(
+        { ...opts, json: false },
+        baseDeps({
+          probeBranches: () => [
+            {
+              code: "submodule_change_branch_local",
+              path: "aos-core",
+              branch: "add-dark-mode",
+              remote: null,
+              current: true,
+            },
+            {
+              code: "submodule_change_branch_remote_tracking",
+              path: "aos-core",
+              branch: "add-dark-mode",
+              remote: "origin",
+              current: true,
+            },
+          ],
+        }),
+      );
+    } finally {
+      write.mockRestore();
+    }
+    expect(output.join(""))
+      .toContain("submodule residual: aos-core local add-dark-mode (current); not pruned");
+    expect(output.join(""))
+      .toContain("submodule residual: aos-core remote-tracking origin/add-dark-mode; local observation, not pruned");
+  });
+
   it("keep-branch skips branch delete even if cleanup would", () => {
     const cleanup = vi.fn(() => ({
       attempted: false,
@@ -151,6 +237,7 @@ describe("runFinish closeout", () => {
     expect(r.action).toBe("pruned_only");
     expect(r.worktreeRemoved).toBe(false);
     expect(r.branchDeleted).toBe(true);
+    expect(r.submoduleBranchDiagnostics).toEqual([]);
   });
 
   it("no worktree + not merged → not_found", () => {

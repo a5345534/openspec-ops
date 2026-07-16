@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   doctorIssuesFromSubmodules,
   parseGitmodulesPaths,
+  probeMatchingSubmoduleBranches,
   probeTopLevelSubmodules,
   type GitRunner,
 } from "../src/submodules/probe.js";
@@ -37,6 +38,108 @@ describe("probeTopLevelSubmodules", () => {
     const dir = mkdtempSync(join(tmpdir(), "ops-nosub-"));
     try {
       expect(probeTopLevelSubmodules(dir)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("probeMatchingSubmoduleBranches", () => {
+  function fixture() {
+    const dir = mkdtempSync(join(tmpdir(), "ops-sub-branches-"));
+    writeFileSync(
+      join(dir, ".gitmodules"),
+      `[submodule "a"]\n\tpath = a\n\turl = ../a\n[submodule "b"]\n\tpath = b\n\turl = ../b\n`,
+    );
+    mkdirSync(join(dir, "a"));
+    mkdirSync(join(dir, "b"));
+    writeFileSync(join(dir, "a", ".git"), "gitdir: ../modules/a\n");
+    writeFileSync(join(dir, "b", ".git"), "gitdir: ../modules/b\n");
+    return dir;
+  }
+
+  it("reports matching local and remote-tracking refs across submodules", () => {
+    const dir = fixture();
+    const commands: string[] = [];
+    try {
+      const runGit: GitRunner = (args, options) => {
+        commands.push(args.join(" "));
+        const sub = options?.cwd?.endsWith("/a") ? "a" : "b";
+        if (args[0] === "rev-parse") return { stdout: "true\n", stderr: "", status: 0 };
+        if (args[0] === "symbolic-ref") {
+          return {
+            stdout: sub === "a" ? "demo-change\n" : "other\n",
+            stderr: "",
+            status: 0,
+          };
+        }
+        if (args[0] === "remote") {
+          return { stdout: "upstream\norigin\n", stderr: "", status: 0 };
+        }
+        const ref = args.at(-1) ?? "";
+        const exists =
+          (sub === "a" && ref === "refs/heads/demo-change") ||
+          (sub === "a" && ref === "refs/remotes/origin/demo-change") ||
+          (sub === "b" && ref === "refs/remotes/upstream/demo-change");
+        return { stdout: "", stderr: "", status: exists ? 0 : 1 };
+      };
+
+      expect(
+        probeMatchingSubmoduleBranches(dir, "demo-change", { runGit }),
+      ).toEqual([
+        {
+          code: "submodule_change_branch_local",
+          path: "a",
+          branch: "demo-change",
+          remote: null,
+          current: true,
+        },
+        {
+          code: "submodule_change_branch_remote_tracking",
+          path: "a",
+          branch: "demo-change",
+          remote: "origin",
+          current: true,
+        },
+        {
+          code: "submodule_change_branch_remote_tracking",
+          path: "b",
+          branch: "demo-change",
+          remote: "upstream",
+          current: false,
+        },
+      ]);
+      expect(commands.some((command) => /fetch|push|switch|branch -d/.test(command))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not walk up from hollow submodule directories into the parent repo", () => {
+    const dir = fixture();
+    try {
+      rmSync(join(dir, "a", ".git"), { force: true });
+      rmSync(join(dir, "b", ".git"), { force: true });
+      const runGit: GitRunner = () => {
+        throw new Error("must not probe parent through hollow path");
+      };
+      expect(probeMatchingSubmoduleBranches(dir, "demo-change", { runGit })).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns empty without matches and skips an individual failing submodule", () => {
+    const dir = fixture();
+    try {
+      const runGit: GitRunner = (args, options) => {
+        if (options?.cwd?.endsWith("/a")) throw new Error("unreadable");
+        if (args[0] === "rev-parse") return { stdout: "true\n", stderr: "", status: 0 };
+        if (args[0] === "symbolic-ref") return { stdout: "", stderr: "", status: 1 };
+        if (args[0] === "remote") return { stdout: "", stderr: "", status: 0 };
+        return { stdout: "", stderr: "", status: 1 };
+      };
+      expect(probeMatchingSubmoduleBranches(dir, "demo-change", { runGit })).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -84,6 +187,7 @@ describe("probeTopLevelSubmodules with injected git", () => {
         `[submodule "aos-core"]\n\tpath = aos-core\n\turl = ../x\n`,
       );
       mkdirSync(join(dir, "aos-core"));
+      writeFileSync(join(dir, "aos-core", ".git"), "gitdir: ../modules/aos-core\n");
 
       const runGit: GitRunner = (args) => {
         if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
@@ -116,6 +220,23 @@ describe("probeTopLevelSubmodules with injected git", () => {
     }
   });
 
+  it("skips hollow submodule paths without probing the parent repository", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ops-sub-hollow-"));
+    try {
+      writeFileSync(
+        join(dir, ".gitmodules"),
+        `[submodule "aos-core"]\n\tpath = aos-core\n\turl = ../x\n`,
+      );
+      mkdirSync(join(dir, "aos-core"));
+      const runGit: GitRunner = () => {
+        throw new Error("must not walk up to parent");
+      };
+      expect(probeTopLevelSubmodules(dir, { runGit })).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("skips submodule when probe git fails open", () => {
     const dir = mkdtempSync(join(tmpdir(), "ops-sub-fail-"));
     try {
@@ -124,6 +245,7 @@ describe("probeTopLevelSubmodules with injected git", () => {
         `[submodule "aos-core"]\n\tpath = aos-core\n\turl = ../x\n`,
       );
       mkdirSync(join(dir, "aos-core"));
+      writeFileSync(join(dir, "aos-core", ".git"), "gitdir: ../modules/aos-core\n");
       const runGit: GitRunner = () => {
         throw new Error("boom");
       };

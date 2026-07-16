@@ -261,6 +261,16 @@ export interface FinishSyncResult {
   diverged: string[];
 }
 
+export interface SubmoduleBranchDiagnostic {
+  code:
+    | "submodule_change_branch_local"
+    | "submodule_change_branch_remote_tracking";
+  path: string;
+  branch: string;
+  remote: string | null;
+  current: boolean;
+}
+
 export interface FinishResult {
   action: "removed" | "removed_and_pruned" | "pruned_only" | "already_clean";
   change: string;
@@ -272,6 +282,8 @@ export interface FinishResult {
   worktreeRemoved: boolean;
   keepBranch: boolean;
   remote: string;
+  /** Read-only pre-teardown observations; parent branchCleanup never covers these refs. */
+  submoduleBranchDiagnostics: SubmoduleBranchDiagnostic[];
   branchCleanup: {
     attempted: boolean;
     localDeleted: boolean;

@@ -124,7 +124,7 @@ Failure:
 
    | Condition | What to do |
    |---|---|
-   | exit 0 | Report action; note worktree removed and whether branch was deleted or kept |
+   | exit 0 | Report action; note parent worktree/branch cleanup and separately summarize any `submoduleBranchDiagnostics` as not pruned |
    | exit 4 `worktree_dirty` | Explain; ask about `--force`; do not retry with force unprompted |
    | exit 5 `not_found` | Nothing to finish |
    | exit 3/2/10 | Shared table |
@@ -147,6 +147,7 @@ Failure:
 ## Closeout behavior
 
 After removing the worktree (if any):
+- `submoduleBranchDiagnostics` are read-only pre-teardown observations; remote-tracking refs may be stale, parent cleanup does not cover them, and default finish never deletes them
 - Clean worktrees with submodule gitlinks may require a CLI-internal, clean-gated structural `git worktree remove --force`; this is not operator `--force`, does not authorize dirty discard, and still reports `forced: false`
 - If PR for the change branch is **merged** → delete local (`-d`) and remote branch (unless `--keep-branch`)
 - If **not** merged → keep branch

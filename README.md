@@ -70,7 +70,9 @@ Recommended order when you implement inside a submodule:
 `openspec-ops doctor` reports `submodule_detached` (info) and `submodule_detached_dirty` (warning).  
 Dirty `finish` messages mention submodule risk; openspec-ops never auto-commits submodules.
 
-**Finish + submodules:** before `git worktree remove`, finish **deinits** initialized top-level submodules in the change worktree (`git submodule deinit -f -- <path>`) while preserving hollow gitlink paths so the parent remains clean. If ordinary removal then hits Git's structural submodule-containment rule, finish freshly verifies the worktree is clean and performs one controlled internal `worktree remove --force`. This structural mechanism is not operator permission to discard data: dirty parent/submodule trees still require explicit operator `--force`, and `result.forced` only reports operator-authorized dirty discard. Persistent containment returns `submodule_teardown_failed` with an actionable hint.
+**Finish + submodules:** before `git worktree remove`, finish records read-only diagnostics for checked-out top-level submodule local and remote-tracking refs that match the resolved parent change branch. JSON returns `submoduleBranchDiagnostics[]` with stable codes `submodule_change_branch_local` and `submodule_change_branch_remote_tracking`; remote-tracking entries are local observations and do not prove a live or merged remote branch. Parent `branchCleanup` never includes these refs, and default finish does not fetch, switch, delete, or push submodule branches.
+
+Finish then **deinits** initialized top-level submodules in the change worktree (`git submodule deinit -f -- <path>`) while preserving hollow gitlink paths so the parent remains clean. If ordinary removal hits Git's structural submodule-containment rule, finish freshly verifies the worktree is clean and performs one controlled internal `worktree remove --force`. This structural mechanism is not operator permission to discard data: dirty parent/submodule trees still require explicit operator `--force`, and `result.forced` only reports operator-authorized dirty discard. Persistent containment returns `submodule_teardown_failed` with an actionable hint.
 
 ### After deliver/finish: primary is not auto-updated
 
@@ -100,7 +102,7 @@ openspec-ops finish <change> --sync-submodules       # submodule update --init -
 openspec-ops finish <change> --attach-submodule-main # only if pin == or ff from main; never force
 ```
 
-Related: teardown / submodule **feature-branch** prune is separate (see issue #22); this checklist is the **return-to-main** DoD (issue #24).
+Related: safe opt-in submodule **feature-branch pruning** remains a separate Phase B enhancement (issue #30); diagnostics never authorize deletion. This checklist is the **return-to-main** DoD (issue #24).
 
 ## Phase 0: workspace lifecycle CLI
 

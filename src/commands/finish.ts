@@ -8,6 +8,7 @@ import {
   isSubmoduleContainmentError,
   prepareWorktreeForRemoval,
 } from "../submodules/teardown.js";
+import { probeMatchingSubmoduleBranches } from "../submodules/probe.js";
 import {
   closeoutHintMessages,
   detectPrimaryBehindOrigin,
@@ -41,6 +42,7 @@ export type FinishDeps = {
   isDirty: typeof isDirty;
   removeWorktree: typeof removeWorktree;
   branchCleanup: typeof cleanupMergedChangeBranches;
+  probeBranches?: typeof probeMatchingSubmoduleBranches;
   branchCleanupDeps?: BranchCleanupDeps;
   finishSyncDeps?: FinishSyncDeps;
   detectBehind?: typeof detectPrimaryBehindOrigin;
@@ -73,6 +75,7 @@ export function runFinish(
   let path: string | null = null;
   let dirty = false;
   let locatedBranch = branch;
+  let submoduleBranchDiagnostics: FinishResult["submoduleBranchDiagnostics"] = [];
 
   try {
     const loc = deps.locate(options);
@@ -88,6 +91,15 @@ export function runFinish(
           `(discards uncommitted work, including inside submodules).`,
         { path: loc.path, change: loc.change },
       );
+    }
+
+    try {
+      submoduleBranchDiagnostics = (
+        deps.probeBranches ?? probeMatchingSubmoduleBranches
+      )(loc.path, locatedBranch);
+    } catch {
+      // Read-only diagnostics are fail-open and never block finish.
+      submoduleBranchDiagnostics = [];
     }
 
     deps.prepare(loc.path);
@@ -257,6 +269,7 @@ export function runFinish(
     worktreeRemoved,
     keepBranch,
     remote,
+    submoduleBranchDiagnostics,
     branchCleanup: {
       attempted: cleanup.attempted,
       localDeleted: cleanup.localDeleted,
@@ -302,6 +315,11 @@ export function runFinish(
       ...(cleanup.mergedPr
         ? [`pr:      #${cleanup.mergedPr.number} ${cleanup.mergedPr.url}`]
         : []),
+      ...submoduleBranchDiagnostics.map((diagnostic) =>
+        diagnostic.code === "submodule_change_branch_local"
+          ? `submodule residual: ${diagnostic.path} local ${diagnostic.branch}${diagnostic.current ? " (current)" : ""}; not pruned`
+          : `submodule residual: ${diagnostic.path} remote-tracking ${diagnostic.remote}/${diagnostic.branch}; local observation, not pruned`,
+      ),
       ...(closeoutHints.messages.length
         ? closeoutHints.messages.map((m) => `hint:    ${m}`)
         : []),

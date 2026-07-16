@@ -1,7 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGit, type GitRunResult } from "../git.js";
-import type { SubmoduleStatus } from "../types.js";
+import type {
+  SubmoduleBranchDiagnostic,
+  SubmoduleStatus,
+} from "../types.js";
 
 export type GitRunner = (
   args: string[],
@@ -47,8 +50,9 @@ function probeOne(
   git: GitRunner,
 ): SubmoduleStatus | null {
   const abs = join(worktreeRoot, relPath);
-  // Missing / not checked out: skip (no issue). Listed in .gitmodules only is not enough.
-  if (!existsSync(abs)) {
+  // Missing, hollow, or not checked out: skip. Requiring the checkout marker
+  // prevents Git from walking up and probing the parent repository instead.
+  if (!existsSync(abs) || !existsSync(join(abs, ".git"))) {
     return null;
   }
 
@@ -112,6 +116,83 @@ export function probeTopLevelSubmodules(
     }
   }
   return out;
+}
+
+/**
+ * Observe same-named local and remote-tracking refs in checked-out top-level
+ * submodules. Read-only, network-free, and fail-open per submodule.
+ */
+export function probeMatchingSubmoduleBranches(
+  worktreeRoot: string,
+  branch: string,
+  options: ProbeOptions = {},
+): SubmoduleBranchDiagnostic[] {
+  if (!worktreeRoot || !branch || !existsSync(worktreeRoot)) return [];
+  const git = options.runGit ?? runGit;
+  const diagnostics: SubmoduleBranchDiagnostic[] = [];
+
+  for (const relPath of listTopLevelSubmodulePaths(worktreeRoot)) {
+    const abs = join(worktreeRoot, relPath);
+    // Require an initialized checkout marker. Without it, Git would walk up
+    // from a hollow directory and accidentally probe the parent repository.
+    if (!existsSync(abs) || !existsSync(join(abs, ".git"))) continue;
+    try {
+      const inside = git(["rev-parse", "--is-inside-work-tree"], {
+        cwd: abs,
+        allowFailure: true,
+      });
+      if (inside.status !== 0 || inside.stdout.trim() !== "true") continue;
+
+      const symbolic = git(["symbolic-ref", "-q", "--short", "HEAD"], {
+        cwd: abs,
+        allowFailure: true,
+      });
+      const currentBranch = symbolic.status === 0 ? symbolic.stdout.trim() : "";
+      const local = git(
+        ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
+        { cwd: abs, allowFailure: true },
+      );
+      if (local.status === 0) {
+        diagnostics.push({
+          code: "submodule_change_branch_local",
+          path: relPath,
+          branch,
+          remote: null,
+          current: currentBranch === branch,
+        });
+      }
+
+      const remotes = git(["remote"], { cwd: abs, allowFailure: true });
+      if (remotes.status !== 0) continue;
+      for (const remote of remotes.stdout
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .sort()) {
+        const tracking = git(
+          [
+            "show-ref",
+            "--verify",
+            "--quiet",
+            `refs/remotes/${remote}/${branch}`,
+          ],
+          { cwd: abs, allowFailure: true },
+        );
+        if (tracking.status !== 0) continue;
+        diagnostics.push({
+          code: "submodule_change_branch_remote_tracking",
+          path: relPath,
+          branch,
+          remote,
+          current: currentBranch === branch,
+        });
+      }
+    } catch {
+      // Diagnostics cannot block lifecycle closeout.
+    }
+  }
+
+  return diagnostics;
 }
 
 /** Map probe results to doctor issues (detached only; not attached+dirty). */
