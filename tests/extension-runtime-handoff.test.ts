@@ -34,6 +34,17 @@ describe("guided extension runtime handoff", () => {
     expect(followup).toBeLessThan(send);
   });
 
+  it("defers both guided slash handoffs and keeps follow-up delivery", () => {
+    expect(source.match(/deferFollowUpHandoff\(\{/g)).toHaveLength(2);
+    expect(source.match(/pi\.sendUserMessage\(message, sendOptions\)/g)).toHaveLength(2);
+    expect(source).toContain("Queued follow-up:");
+    expect(source).toContain("Follow-up was not queued:");
+    expect(source).toContain("ops-deliver queued for");
+    expect(source).toContain("ops-deliver was not queued for");
+    expect(source).not.toContain("ops-deliver scheduled for");
+    expect(source).not.toContain('deliverAs: "steer"');
+  });
+
   it("injects runtime context without writing project configuration", () => {
     const before = source.slice(
       source.indexOf('pi.on("before_agent_start"'),

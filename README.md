@@ -436,6 +436,10 @@ Extension: `.pi/extensions/openspec-ops-guided.ts` (guided lifecycle).
 
 Stations (main menu): `no_workspace`→start; `proposed`→spec-review|apply; `applied`→ship; `shipped`→impl-review|ship|merge; `merged`→archive; `archived`→finish.
 
+### Pi 0.80.7 compaction handoff compatibility
+
+Pi 0.80.7 can race while flushing compaction-queued input and reject a later plain prompt with `Agent is already processing` ([upstream earendil-works/pi#6728](https://github.com/earendil-works/pi/issues/6728)). `/ops-next` and `/ops-deliver` therefore defer their extension-generated handoff by one host task, then send it exactly once as `followUp`; they report it as queued only after the send API accepts the call. This cannot recover a slash command that Pi never dispatches to the extension, and it never retries automatically. Remove the workaround only after the minimum supported Pi release has a verified queue-flush fix, while retaining the exactly-once follow-up regression tests.
+
 ## Local lifecycle metrics (`/ops-metrics`)
 
 Disabled by default. Collection and reports are mechanical: they do **not** call a model, queue a follow-up, expose a telemetry tool, or alter lifecycle gates.
