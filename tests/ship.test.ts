@@ -1,7 +1,13 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  classifyPushFailure,
   defaultShipMessage,
   isNothingToShipMessage,
+  resolveRemotePushUrl,
   runShip,
   toBaseBranchName,
   type ShipDeps,
@@ -34,10 +40,12 @@ function mockDeps(over: Partial<ShipDeps> = {}): ShipDeps {
     resolveBase: () => "origin/main",
     revParse: () => "deadbeef",
     stageAllAndCommit: () => "commitsha1",
+    getRemotePushUrl: () => "git@github.com:org/repo.git",
     branchAheadOfRemote: () => true,
     pushBranch: () => {},
     getPrBackend: () => ({
       id: "gh",
+      preflightRepository: () => ({ repository: "org/repo" }),
       createOrReusePullRequest: () => ({
         url: "https://github.com/org/repo/pull/1",
         number: 1,
@@ -153,6 +161,7 @@ describe("runShip", () => {
         pushBranch: push,
         getPrBackend: () => ({
           id: "gh",
+          preflightRepository: () => ({ repository: "org/repo" }),
           createOrReusePullRequest: () => ({
             url: "https://github.com/org/repo/pull/9",
             number: 9,
@@ -258,6 +267,7 @@ describe("runShip", () => {
         mockDeps({
           getPrBackend: () => ({
             id: "gh",
+            preflightRepository: () => ({ repository: "org/repo" }),
             createOrReusePullRequest: () => {
               throw new CliError("pr_failed", "auth", { backend: "gh" });
             },
@@ -268,7 +278,12 @@ describe("runShip", () => {
     } catch (e) {
       expect(e).toBeInstanceOf(CliError);
       expect((e as CliError).code).toBe("pr_failed");
-      expect((e as CliError).details.pushOk).toBe(true);
+      expect((e as CliError).details).toMatchObject({
+        commitCreated: true,
+        commitSha: "commitsha1",
+        pushAttempted: true,
+        pushOk: true,
+      });
     }
   });
 
@@ -325,6 +340,7 @@ describe("runShip", () => {
           branchAheadOfRemote: () => false,
           getPrBackend: () => ({
             id: "gh",
+            preflightRepository: () => ({ repository: "org/repo" }),
             createOrReusePullRequest: () => {
               throw new CliError(
                 "pr_failed",
@@ -340,6 +356,158 @@ describe("runShip", () => {
       expect(e).toBeInstanceOf(CliError);
       expect((e as CliError).code).toBe("nothing_to_ship");
     }
+  });
+});
+
+describe("ship remote preflight", () => {
+  it("detects a real local repository with no remote before creating a commit", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ops-ship-no-remote-"));
+    try {
+      execFileSync("git", ["init", "-q", "-b", "main"], { cwd: dir });
+      execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
+      writeFileSync(join(dir, "tracked.txt"), "base\n");
+      execFileSync("git", ["add", "."], { cwd: dir });
+      execFileSync("git", ["commit", "-qm", "base"], { cwd: dir });
+      const before = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: dir,
+        encoding: "utf8",
+      }).trim();
+      writeFileSync(join(dir, "tracked.txt"), "dirty\n");
+      const stage = vi.fn(() => "new-sha");
+
+      try {
+        runShip(
+          {
+            change: "add-dark-mode",
+            json: true,
+            draft: false,
+            remote: "origin",
+            backend: "gh",
+          },
+          mockDeps({
+            locate: () => baseWhere({ path: dir, primaryPath: dir }),
+            getRemotePushUrl: resolveRemotePushUrl,
+            stageAllAndCommit: stage,
+          }),
+        );
+        expect.fail("should throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(CliError);
+        expect((error as CliError).code).toBe("remote_not_configured");
+        expect((error as CliError).details).toMatchObject({
+          remote: "origin",
+          commitCreated: false,
+          commitSha: null,
+          pushAttempted: false,
+          pushOk: false,
+        });
+      }
+
+      expect(stage).not.toHaveBeenCalled();
+      const after = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: dir,
+        encoding: "utf8",
+      }).trim();
+      expect(after).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves an explicit pushurl instead of the fetch URL", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ops-ship-pushurl-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: dir });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/fetch/repo.git"], { cwd: dir });
+      execFileSync("git", ["config", "remote.origin.pushurl", "git@github.com:push/repo.git"], { cwd: dir });
+      expect(resolveRemotePushUrl(dir, "origin")).toBe(
+        "git@github.com:push/repo.git",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stops on backend repository preflight before commit", () => {
+    const stage = vi.fn(() => "sha1");
+    expect(() =>
+      runShip(
+        {
+          change: "add-dark-mode",
+          json: true,
+          draft: false,
+          remote: "origin",
+          backend: "gh",
+        },
+        mockDeps({
+          stageAllAndCommit: stage,
+          getPrBackend: () => ({
+            id: "gh",
+            preflightRepository: () => {
+              throw new CliError(
+                "github_repository_not_found",
+                "missing",
+                { repository: "org/missing" },
+              );
+            },
+            createOrReusePullRequest: () => {
+              throw new Error("must not create PR");
+            },
+          }),
+        }),
+      ),
+    ).toThrowError(expect.objectContaining({ code: "github_repository_not_found" }));
+    expect(stage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Authentication failed", "push_auth_failed"],
+    ["! [rejected] feature -> feature (non-fast-forward)", "push_rejected"],
+    ["Could not resolve host: github.com", "push_failed"],
+  ] as const)("classifies push failure %s as %s with mutation facts", (message, code) => {
+    try {
+      runShip(
+        {
+          change: "add-dark-mode",
+          json: true,
+          draft: false,
+          remote: "origin",
+          backend: "gh",
+        },
+        mockDeps({
+          stageAllAndCommit: () => "created-sha",
+          pushBranch: () => {
+            throw new CliError("git_failed", message);
+          },
+        }),
+      );
+      expect.fail("should throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CliError);
+      expect((error as CliError).code).toBe(code);
+      expect((error as CliError).details).toMatchObject({
+        remote: "origin",
+        branch: "add-dark-mode",
+        commitCreated: true,
+        commitSha: "created-sha",
+        pushAttempted: true,
+        pushOk: false,
+      });
+    }
+  });
+
+  it("classifies common push messages", () => {
+    expect(classifyPushFailure("Permission denied (publickey)")).toBe(
+      "push_auth_failed",
+    );
+    expect(
+      classifyPushFailure("remote: Write access to repository not granted. error: 403"),
+    ).toBe("push_auth_failed");
+    expect(classifyPushFailure("pre-receive hook declined")).toBe(
+      "push_rejected",
+    );
+    expect(classifyPushFailure("connection timed out")).toBe("push_failed");
   });
 });
 

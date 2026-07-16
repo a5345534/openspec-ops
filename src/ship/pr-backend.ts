@@ -13,9 +13,20 @@ export interface CreateOrReusePrResult {
   alreadyExisted?: boolean;
 }
 
+export interface PreflightRepositoryInput {
+  cwd: string;
+  remote: string;
+  remoteUrl: string;
+}
+
+export interface PreflightRepositoryResult {
+  repository: string;
+}
+
 /** Synchronous PR backend (CLI spawnSync style). */
 export interface PrBackend {
   id: string;
+  preflightRepository(input: PreflightRepositoryInput): PreflightRepositoryResult;
   createOrReusePullRequest(input: CreateOrReusePrInput): CreateOrReusePrResult;
 }
 

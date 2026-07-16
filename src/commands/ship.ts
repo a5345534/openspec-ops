@@ -31,6 +31,57 @@ export function toBaseBranchName(ref: string): string {
     .replace(/^refs\/heads\//, "");
 }
 
+export function resolveRemotePushUrl(cwd: string, remote: string): string {
+  const result = runGit(["remote", "get-url", "--push", remote], {
+    cwd,
+    allowFailure: true,
+  });
+  const url = result.stdout.trim();
+  if (result.status !== 0 || !url) {
+    throw new CliError(
+      "remote_not_configured",
+      `Remote '${remote}' is not configured with a usable push URL.`,
+      {
+        remote,
+        suggestedAction: "configure_remote_or_create_repository",
+      },
+    );
+  }
+  return url;
+}
+
+export function classifyPushFailure(message: string):
+  | "push_auth_failed"
+  | "push_rejected"
+  | "push_failed" {
+  const value = message.toLowerCase();
+  if (
+    value.includes("authentication failed") ||
+    value.includes("permission denied") ||
+    value.includes("could not read username") ||
+    value.includes("publickey") ||
+    value.includes("access denied") ||
+    value.includes("write access to repository not granted") ||
+    value.includes("does not have write access") ||
+    value.includes("error: 401") ||
+    value.includes("error: 403") ||
+    value.includes("repository not found")
+  ) {
+    return "push_auth_failed";
+  }
+  if (
+    value.includes("[rejected]") ||
+    value.includes("non-fast-forward") ||
+    value.includes("protected branch") ||
+    value.includes("pre-receive hook declined") ||
+    value.includes("remote rejected") ||
+    value.includes("failed to push some refs")
+  ) {
+    return "push_rejected";
+  }
+  return "push_failed";
+}
+
 export interface ShipDeps {
   locate: typeof locateWorkspace;
   isDirty: (path: string) => boolean;
@@ -38,6 +89,7 @@ export interface ShipDeps {
   resolveBase: (cwd: string, explicit?: string) => string;
   revParse: (cwd: string, rev: string) => string;
   stageAllAndCommit: (cwd: string, message: string) => string;
+  getRemotePushUrl: (cwd: string, remote: string) => string;
   branchAheadOfRemote: (cwd: string, remote: string, branch: string) => boolean;
   pushBranch: (cwd: string, remote: string, branch: string) => void;
   getPrBackend: (id: string) => PrBackend;
@@ -54,6 +106,7 @@ const defaultDeps: ShipDeps = {
     runGit(["commit", "-m", message], { cwd });
     return revParse(cwd, "HEAD");
   },
+  getRemotePushUrl: resolveRemotePushUrl,
   branchAheadOfRemote(cwd, remote, branch) {
     const remoteRef = `${remote}/${branch}`;
     const hasRemote = runGit(["rev-parse", "--verify", "--quiet", remoteRef], {
@@ -101,6 +154,37 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
     }
   }
 
+  let backend: PrBackend;
+  try {
+    const remoteUrl = deps.getRemotePushUrl(loc.path, remote);
+    backend = deps.getPrBackend(backendId);
+    backend.preflightRepository({ cwd: loc.path, remote, remoteUrl });
+  } catch (err) {
+    if (err instanceof CliError) {
+      throw new CliError(err.code, err.message, {
+        ...err.details,
+        remote,
+        branch: loc.branch,
+        commitCreated: false,
+        commitSha: null,
+        pushAttempted: false,
+        pushOk: false,
+      });
+    }
+    throw new CliError(
+      "internal",
+      err instanceof Error ? err.message : String(err),
+      {
+        remote,
+        branch: loc.branch,
+        commitCreated: false,
+        commitSha: null,
+        pushAttempted: false,
+        pushOk: false,
+      },
+    );
+  }
+
   const message = options.message?.trim() || defaultShipMessage(loc.change);
   const title = options.title?.trim() || message;
   const body = options.body ?? "";
@@ -127,12 +211,15 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
       deps.pushBranch(loc.path, remote, loc.branch);
       pushed = true;
     } catch (err) {
-      if (err instanceof CliError) throw err;
-      throw new CliError(
-        "git_failed",
-        err instanceof Error ? err.message : String(err),
-        { remote, branch: loc.branch },
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      throw new CliError(classifyPushFailure(message), message, {
+        remote,
+        branch: loc.branch,
+        commitCreated,
+        commitSha,
+        pushAttempted: true,
+        pushOk: false,
+      });
     }
   } else {
     pushSkipped = true;
@@ -145,7 +232,6 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
 
   let pr: ShipResult["pr"] = null;
   try {
-    const backend = deps.getPrBackend(backendId);
     const prRes = backend.createOrReusePullRequest({
       cwd: loc.path,
       base,
@@ -173,12 +259,23 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
         throw new CliError(
           "nothing_to_ship",
           `Nothing to ship for '${loc.change}': clean worktree, not ahead of ${remote}/${loc.branch}, and no PR to create (${err.message})`,
-          { change: loc.change, branch: loc.branch, cause: err.message },
+          {
+            change: loc.change,
+            branch: loc.branch,
+            cause: err.message,
+            commitCreated,
+            commitSha,
+            pushAttempted: !pushSkipped,
+            pushOk: pushed,
+          },
         );
       }
       if (err.code === "pr_failed" || err.code === "pr_backend_unavailable") {
         throw new CliError(err.code, err.message, {
           ...err.details,
+          commitCreated,
+          commitSha,
+          pushAttempted: !pushSkipped,
           pushOk: pushed,
           hint:
             (err.details.hint as string | undefined) ??
@@ -190,6 +287,9 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
       throw err;
     }
     throw new CliError("pr_failed", err instanceof Error ? err.message : String(err), {
+      commitCreated,
+      commitSha,
+      pushAttempted: !pushSkipped,
       pushOk: pushed,
     });
   }
@@ -198,7 +298,14 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
     throw new CliError(
       "nothing_to_ship",
       `Nothing to ship for '${loc.change}': clean worktree, branch not ahead of ${remote}/${loc.branch}, no PR`,
-      { change: loc.change, branch: loc.branch },
+      {
+        change: loc.change,
+        branch: loc.branch,
+        commitCreated,
+        commitSha,
+        pushAttempted: !pushSkipped,
+        pushOk: pushed,
+      },
     );
   }
 
