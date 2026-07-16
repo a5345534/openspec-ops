@@ -46,6 +46,7 @@ import {
   runOps,
 } from "../../src/ops-runtime/run-ops.js";
 import { buildDeliverFollowup } from "../../src/ops-runtime/deliver-handoff.js";
+import { deferFollowUpHandoff } from "../../src/ops-runtime/deferred-followup.js";
 import { formatOpsRuntimeBinding } from "../../src/ops-runtime/runtime-binding.js";
 import {
   CHANGE_NAME_RE,
@@ -746,8 +747,18 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       if (typeof pi.sendUserMessage === "function") {
-        pi.sendUserMessage(opt.command, { deliverAs: "followUp" });
-        ctx.ui.notify(`Scheduled: ${opt.command}`, "info");
+        deferFollowUpHandoff({
+          message: opt.command,
+          send: (message, sendOptions) =>
+            pi.sendUserMessage(message, sendOptions),
+          onAccepted: () =>
+            ctx.ui.notify(`Queued follow-up: ${opt.command}`, "info"),
+          onRejected: (error) =>
+            ctx.ui.notify(
+              `Follow-up was not queued: ${opt.command}. ${error.message}`,
+              "error",
+            ),
+        });
       } else {
         ctx.ui.notify(`Run manually: ${opt.command}`, "warning");
       }
@@ -818,8 +829,26 @@ export default function (pi: ExtensionAPI) {
       });
 
       if (typeof pi.sendUserMessage === "function") {
-        pi.sendUserMessage(followup, { deliverAs: "followUp" });
-        ctx.ui.notify(`ops-deliver scheduled for ${change}`, "info");
+        deferFollowUpHandoff({
+          message: followup,
+          send: (message, sendOptions) =>
+            pi.sendUserMessage(message, sendOptions),
+          onAccepted: () =>
+            ctx.ui.notify(`ops-deliver queued for ${change}`, "info"),
+          onRejected: (error) => {
+            try {
+              metricsRuntime?.settleDeliver(
+                localStationForMetrics(change, ctx.cwd),
+              );
+            } catch {
+              metricsRuntime?.settleDeliver("unknown");
+            }
+            ctx.ui.notify(
+              `ops-deliver was not queued for ${change}: ${error.message}`,
+              "error",
+            );
+          },
+        });
       } else {
         try {
           metricsRuntime?.settleDeliver(localStationForMetrics(change, ctx.cwd));
