@@ -7,26 +7,43 @@ Finish tears down change worktrees that contain initialized top-level submodules
 ## Requirements
 
 ### Requirement: Finish removes worktrees that contain initialized top-level submodules
-When `openspec-ops finish` runs against a registered change worktree that contains one or more **initialized top-level submodules**, the system SHALL prepare the worktree for removal (including deinitializing those submodules as needed) and then remove the worktree successfully, retaining the change branch.
+When `openspec-ops finish` runs against a registered change worktree that contains one or more **initialized or deinitialized top-level submodule gitlinks**, the system SHALL prepare the worktree for removal and remove a verified-clean worktree successfully. If Git requires force solely for structural submodule containment, the system SHALL use controlled internal structural force without requiring operator `--force` and without treating it as permission to discard dirty data.
 
-#### Scenario: clean worktree with submodule finishes
-- **WHEN** the change worktree is clean
-- **AND** it contains an initialized top-level submodule
-- **AND** the user runs `openspec-ops finish <change> --json`
+#### Scenario: clean initialized submodule worktree finishes
+- **WHEN** the change worktree and its initialized top-level submodules are clean
+- **AND** the user runs `openspec-ops finish <change> --json` without `--force`
 - **THEN** the command exits successfully
 - **AND** the worktree is no longer registered
-- **AND** `branchDeleted` remains false
+- **AND** the result does not claim operator-authorized dirty discard
+
+#### Scenario: clean deinitialized submodule worktree finishes
+- **WHEN** a clean change worktree contains a deinitialized top-level submodule gitlink
+- **AND** Git requires structural force to remove the worktree
+- **THEN** finish completes without operator `--force`
+- **AND** does not discard uncommitted data
 
 ---
 
 ### Requirement: Dirty worktree still requires force
-Finish MUST still refuse a dirty worktree without `--force`, including when dirtiness involves submodule content, consistent with existing dirty policy.
+Finish MUST refuse a dirty parent or submodule worktree without operator `--force`. Internal structural force MUST NOT be used unless the target is freshly verified clean after preparation.
 
-#### Scenario: dirty without force still blocked
-- **WHEN** the worktree is dirty
+#### Scenario: dirty parent without force is blocked
+- **WHEN** the parent worktree is dirty
 - **AND** finish is invoked without `--force`
-- **THEN** the command fails with worktree dirty semantics
+- **THEN** the command fails with `worktree_dirty`
 - **AND** the worktree is not removed
+
+#### Scenario: dirty submodule without force is blocked
+- **WHEN** an initialized submodule contains uncommitted changes
+- **AND** finish is invoked without `--force`
+- **THEN** the command fails with `worktree_dirty`
+- **AND** internal structural force is not attempted
+
+#### Scenario: target becomes dirty after preparation
+- **WHEN** ordinary removal reports submodule containment
+- **AND** the fresh pre-structural-force check reports the target dirty
+- **THEN** finish refuses structural force
+- **AND** reports a retryable dirty-worktree failure
 
 ---
 
@@ -38,31 +55,34 @@ If submodule preparation fails and the worktree cannot be removed because of sub
 - **THEN** the error uses code `submodule_teardown_failed` when the failure is attributed to submodule teardown
 - **AND** suggests remediation involving submodule deinit or manual worktree remove
 
-### Requirement: Prepare clears residual top-level submodule directories after deinit
-When preparing a change worktree for removal, after deinitializing an initialized top-level submodule (or when a listed submodule path exists but is not initialized), the system SHALL remove residual directories for that path when they no longer look like an initialized submodule checkout, so that `git worktree remove` is not blocked solely by empty or hollow leftover directories.
+### Requirement: Prepare preserves clean gitlink worktree state
+When preparation deinitializes a top-level submodule, it SHALL preserve the resulting hollow gitlink directory rather than deleting the tracked submodule path. Preparation MUST NOT turn an initially clean worktree into a synthetic ` D <submodule>` state merely to attempt ordinary removal.
 
-The system MUST NOT delete a path that still looks initialized (has a submodule `.git` file or directory) when deinit did not succeed for that path.
+#### Scenario: successful deinit leaves hollow path clean
+- **WHEN** preparation deinitializes a clean top-level submodule
+- **THEN** the hollow submodule path remains present
+- **AND** the parent worktree remains clean for structural verification
 
-#### Scenario: residual empty dir after deinit is cleared
-- **WHEN** prepare runs on a worktree with an initialized top-level submodule
-- **AND** deinit succeeds
-- **AND** the submodule path still exists without an initialized `.git` checkout
-- **THEN** prepare removes that residual directory before returning
+#### Scenario: already-deinitialized path is preserved
+- **WHEN** a listed submodule path exists without an initialized `.git` checkout
+- **THEN** preparation does not recursively delete that path
+- **AND** does not manufacture parent worktree dirtiness
 
-#### Scenario: still-initialized path is not force-deleted on deinit failure
-- **WHEN** deinit fails for a path that still looks initialized
-- **THEN** prepare fails with `submodule_teardown_failed`
-- **AND** does not silently delete the live submodule checkout
+### Requirement: Finish uses controlled structural force after containment
+When ordinary `git worktree remove` fails with a recognized submodule containment error after preparation, finish SHALL freshly verify the target is clean and retry removal exactly once using Git's structural force mechanism. It MUST NOT repeat preparation or delete hollow gitlink paths as a substitute for structural removal. If the controlled retry fails, finish SHALL preserve stable actionable error behavior.
 
-### Requirement: Finish retries worktree remove once after re-prepare on containment
-When `git worktree remove` fails because the worktree still contains submodules after the first prepare, finish SHALL run prepare again and retry worktree removal **once**. If the second remove still fails for the same class of error, finish MUST fail with `submodule_teardown_failed` and an actionable remediation hint.
+#### Scenario: ordinary remove containment then structural success
+- **WHEN** preparation has completed
+- **AND** ordinary worktree removal fails with recognized submodule containment
+- **AND** the target remains clean
+- **AND** controlled structural removal succeeds
+- **THEN** finish succeeds without operator `--force`
 
-#### Scenario: first remove containment then success on retry
-- **WHEN** the first worktree remove fails with a submodule containment error
-- **AND** a second prepare + remove succeeds
-- **THEN** finish succeeds and the worktree is removed
+#### Scenario: structural retry still reports containment
+- **WHEN** controlled structural removal also fails with submodule containment
+- **THEN** finish fails with `submodule_teardown_failed`
+- **AND** includes actionable remediation
 
-#### Scenario: containment persists after retry
-- **WHEN** both remove attempts fail with submodule containment
-- **THEN** the error code is `submodule_teardown_failed`
-- **AND** the message guides manual deinit / retry finish
+#### Scenario: structural retry returns another Git error
+- **WHEN** controlled structural removal fails for a reason other than submodule containment
+- **THEN** finish preserves that error rather than relabeling it as teardown containment
