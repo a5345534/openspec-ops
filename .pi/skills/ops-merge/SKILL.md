@@ -13,6 +13,10 @@ metadata:
 
 # ops-merge
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 Merge the **open PR** for a change branch into the base (default **squash**).
 
 **Invoking this skill / CLI is consent** — no second “are you sure?”.  

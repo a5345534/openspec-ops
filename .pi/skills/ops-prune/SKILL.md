@@ -13,6 +13,10 @@ metadata:
 
 # ops-prune
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 **Deprecated for primary closeout.** Prefer `openspec-ops finish` / `/ops-finish`
 (worktree remove + merged branch cleanup). prune remains branch-only if no worktree.
 

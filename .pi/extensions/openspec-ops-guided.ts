@@ -47,6 +47,13 @@ import {
 } from "../../src/ops-runtime/run-ops.js";
 import { buildDeliverFollowup } from "../../src/ops-runtime/deliver-handoff.js";
 import { deferFollowUpHandoff } from "../../src/ops-runtime/deferred-followup.js";
+import {
+  RESPONSE_LANGUAGE_ENTRY_TYPE,
+  formatResponseLanguageContract,
+  inferResponseLanguage,
+  restoreResponseLanguage,
+  type ResponseLanguage,
+} from "../../src/ops-runtime/response-language.js";
 import { formatOpsRuntimeBinding } from "../../src/ops-runtime/runtime-binding.js";
 import {
   CHANGE_NAME_RE,
@@ -178,6 +185,7 @@ export default function (pi: ExtensionAPI) {
     : `openspec-ops runtime unavailable: ${opsRuntime.message}`;
   const metricsAgentDir = getAgentDir();
   let metricsEnabled = readMetricsConfig(metricsAgentDir).enabled;
+  let responseLanguage: ResponseLanguage | null = null;
   let metricsRuntime: LifecycleMetricsRuntime | null = null;
   let metricsWarned = false;
   const pendingShell = new Map<
@@ -208,7 +216,15 @@ export default function (pi: ExtensionAPI) {
     return metricsRuntime;
   };
 
+  const observeOperatorLanguage = (text: string): void => {
+    const next = inferResponseLanguage(text, responseLanguage);
+    if (!next || next === responseLanguage) return;
+    responseLanguage = next;
+    pi.appendEntry(RESPONSE_LANGUAGE_ENTRY_TYPE, { language: next });
+  };
+
   pi.on("session_start", async (_event, ctx) => {
+    responseLanguage = restoreResponseLanguage(ctx.sessionManager.getEntries());
     metricsEnabled = readMetricsConfig(metricsAgentDir).enabled;
     metricsRuntime = null;
     metricsWarned = false;
@@ -217,6 +233,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("input", async (event, ctx) => {
+    if (event.source !== "extension") observeOperatorLanguage(event.text);
     if (!metricsEnabled) return { action: "continue" as const };
     const parsed = parseLifecycleSlash(event.text);
     if (parsed) {
@@ -301,11 +318,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async () => {
     const configBlock = formatConfigInjection(process.env);
+    const languageBlock = formatResponseLanguageContract(responseLanguage);
     if (!active) {
       return {
         message: {
           customType: "openspec-ops-config",
-          content: `${opsRuntimeBlock}\n\n${configBlock}`,
+          content: `${opsRuntimeBlock}\n\n${configBlock}\n\n${languageBlock}`,
           display: false,
         },
       };
@@ -315,6 +333,7 @@ export default function (pi: ExtensionAPI) {
       `REQUIRED: Prefer workspace path ${active.path} for change "${active.change}" (tool cwd or cd). start does NOT switch process cwd.`,
       opsRuntimeBlock,
       configBlock,
+      languageBlock,
     ];
     active = null;
     return {
@@ -822,10 +841,12 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
+      if (rest) observeOperatorLanguage(rest);
       const followup = buildDeliverFollowup({
         change,
         ...(rest ? { objective: rest } : {}),
         runtime: opsRuntime,
+        responseLanguageContract: formatResponseLanguageContract(responseLanguage),
       });
 
       if (typeof pi.sendUserMessage === "function") {

@@ -14,6 +14,10 @@ metadata:
 
 # ops-next
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 After a lifecycle step finishes, **ask what to do next**. Never auto-start the next skill.
 
 ## Input

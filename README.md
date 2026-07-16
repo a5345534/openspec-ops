@@ -442,6 +442,12 @@ Extension: `.pi/extensions/openspec-ops-guided.ts` (guided lifecycle).
 
 Stations (main menu): `no_workspace`→start; `proposed`→spec-review|apply; `applied`→ship; `shipped`→impl-review|ship|merge; `merged`→archive; `archived`→finish.
 
+### Conversation response language
+
+The extension mechanically tracks a sticky, session-scoped language hint from genuine operator input and reinjects it before every agent turn. Long-running progress, review findings, hard stops, and final summaries therefore remain in the operator's language across compaction, deferred English handoffs, reload, and resume. Only the locale code is persisted as session metadata; operator prose is not copied. Commands, paths, identifiers, error codes, JSON keys, URLs, raw tool output, and metrics markers remain exact.
+
+Short or ambiguous input keeps the established language; explicit language requests and sufficiently long natural-language input can switch it. This guarantee covers agent-generated conversational lifecycle reporting. Direct CLI human output, fixed administrative extension notifications, and metrics table headings remain English in this version.
+
 ### Pi 0.80.7 compaction handoff compatibility
 
 Pi 0.80.7 can race while flushing compaction-queued input and reject a later plain prompt with `Agent is already processing` ([upstream earendil-works/pi#6728](https://github.com/earendil-works/pi/issues/6728)). `/ops-next` and `/ops-deliver` therefore defer their extension-generated handoff by one host task, then send it exactly once as `followUp`; they report it as queued only after the send API accepts the call. This cannot recover a slash command that Pi never dispatches to the extension, and it never retries automatically. Remove the workaround only after the minimum supported Pi release has a verified queue-flush fix, while retaining the exactly-once follow-up regression tests.

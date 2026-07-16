@@ -14,6 +14,10 @@ metadata:
 
 # ops-finish
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 Remove change **worktree** when present. If the PR is **merged** (gh), also delete
 **local + remote** branch unless `--keep-branch`. Not an OpenSpec archive.
 `prune` is deprecated—prefer finish for closeout.

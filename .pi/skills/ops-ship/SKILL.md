@@ -13,6 +13,10 @@ metadata:
 
 # ops-ship
 
+## Response language
+
+Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
+
 Commit **all** changes in a change worktree, push the branch (no force), open a PR via `gh`.
 
 Does **not** merge, archive OpenSpec changes, or run `finish`.
