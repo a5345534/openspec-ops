@@ -3,9 +3,7 @@
 ## Purpose
 
 Operator-driven next lifecycle step selection with hard-coded edges and UI/text menu.
-
 ## Requirements
-
 ### Requirement: Guided next-step entrypoint exists
 The system SHALL provide an operator entrypoint (`/ops-next` skill and/or equivalent) that, given a change name, determines the current lifecycle station and presents allowed next actions.
 
@@ -132,7 +130,6 @@ Candidate discovery MUST NOT treat the basename of a package root, primary check
 - **WHEN** a resolved root is `.../.worktrees/add-x`
 - **THEN** `add-x` is included as a candidate via worktree-leaf detection
 
-
 ### Requirement: Station detection uses PR open/merged signals when available
 When computing the lifecycle station for guided next-step, the system SHALL set open-PR and merged-PR signals from the PR backend (gh) for the change head branch when that lookup succeeds.
 
@@ -166,3 +163,29 @@ Lifecycle station detection used by guided next-step SHALL remain available for 
 - **WHEN** station is `shipped`
 - **THEN** deliver’s default path includes mandatory impl-review then merge
 - **AND** ops-next may still offer impl-review, ship, merge, or stop as manual options
+
+### Requirement: Guided next handoff avoids the compaction flush call stack
+When `/ops-next` schedules the operator-selected lifecycle command, the extension SHALL defer its `sendUserMessage` call to a later host task and SHALL deliver it as `followUp`. It MUST invoke the sender at most once and MUST NOT use `steer` for this handoff.
+
+#### Scenario: selected action during busy or compaction-adjacent handling
+- **WHEN** the operator selects a next lifecycle action while the host is busy or dispatching a compaction-queued slash command
+- **THEN** the slash handler returns without immediately starting the lifecycle turn
+- **AND** a later host task sends exactly one follow-up lifecycle message
+- **AND** no steering message is sent
+
+#### Scenario: normal idle next invocation
+- **WHEN** the operator selects a next action while the host is otherwise idle
+- **THEN** the same deferred follow-up path sends exactly one selected command
+
+### Requirement: Guided next notification reflects handoff acceptance
+The extension SHALL display successful queued/scheduled wording only after `sendUserMessage` returns without throwing. If the handoff API rejects synchronously, the extension SHALL report that the follow-up was not queued and MUST NOT emit a success notification for that attempt.
+
+#### Scenario: follow-up sender accepts
+- **WHEN** the deferred sender returns without throwing
+- **THEN** the extension notifies that the selected action was queued
+
+#### Scenario: follow-up sender rejects
+- **WHEN** the deferred sender throws
+- **THEN** the extension reports a failed handoff
+- **AND** does not claim the action was scheduled
+- **AND** does not retry automatically
