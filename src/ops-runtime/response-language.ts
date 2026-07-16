@@ -15,7 +15,7 @@ const SIMPLIFIED = new Set(
 const EXPLICIT: Array<[RegExp, ResponseLanguage]> = [
   [/(?:traditional chinese|繁體中文|正體中文)/iu, "zh-Hant"],
   [/(?:simplified chinese|简体中文|簡體中文)/iu, "zh-Hans"],
-  [/(?:respond|continue|reply|回答|回覆|回复).{0,20}(?:in\s+english|用英文|使用英文)/iu, "eng"],
+  [/(?:respond|continue|reply|switch|回答|回報|回覆|回复|切換|切换|改用|使用|用).{0,20}(?:in\s+english|to\s+english|英文|英語|英语)/iu, "eng"],
   [/(?:respond|continue|reply).{0,20}(?:in )?spanish/iu, "spa"],
   [/(?:respond|continue|reply).{0,20}(?:in )?japanese/iu, "jpn"],
   [/(?:respond|continue|reply).{0,20}(?:in )?korean/iu, "kor"],

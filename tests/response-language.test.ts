@@ -27,6 +27,10 @@ describe("inferResponseLanguage", () => {
     expect(
       inferResponseLanguage("Please continue in English", "zh-Hant"),
     ).toBe("eng");
+    expect(inferResponseLanguage("接下來請用英文回報", "zh-Hant")).toBe(
+      "eng",
+    );
+    expect(inferResponseLanguage("Switch to English", "spa")).toBe("eng");
   });
 
   it("keeps the prior Chinese variant for neutral Han text", () => {
