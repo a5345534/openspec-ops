@@ -34,7 +34,7 @@ The `gh` backend will run `gh --version`, `gh auth status`, then `gh repo view <
 
 ### Classify push failures separately
 
-A successful preflight cannot prevent branch protection, non-fast-forward, credential-helper differences, or network changes. Push errors will be classified as `push_auth_failed`, `push_rejected`, or `push_failed`. Error details include remote, branch, `commitCreated`, optional `commitSha`, and `pushOk: false`. Preflight errors always report `commitCreated: false` and `pushOk: false`.
+A successful preflight cannot prevent branch protection, non-fast-forward, credential-helper differences, or network changes. Push errors will be classified as `push_auth_failed`, `push_rejected`, or `push_failed`. Error details include remote, branch, `commitCreated`, optional `commitSha`, `pushAttempted`, and `pushOk`. Preflight errors always report `commitCreated: false`, `pushAttempted: false`, and `pushOk: false`; push failures report `pushAttempted: true`. PR-backend failures after the mutation phase retain the same facts so an operator can distinguish a failed push from a successful push followed by PR failure.
 
 ### Keep bootstrap separate
 

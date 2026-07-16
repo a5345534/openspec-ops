@@ -278,7 +278,12 @@ describe("runShip", () => {
     } catch (e) {
       expect(e).toBeInstanceOf(CliError);
       expect((e as CliError).code).toBe("pr_failed");
-      expect((e as CliError).details.pushOk).toBe(true);
+      expect((e as CliError).details).toMatchObject({
+        commitCreated: true,
+        commitSha: "commitsha1",
+        pushAttempted: true,
+        pushOk: true,
+      });
     }
   });
 
@@ -394,6 +399,7 @@ describe("ship remote preflight", () => {
           remote: "origin",
           commitCreated: false,
           commitSha: null,
+          pushAttempted: false,
           pushOk: false,
         });
       }
@@ -485,6 +491,7 @@ describe("ship remote preflight", () => {
         branch: "add-dark-mode",
         commitCreated: true,
         commitSha: "created-sha",
+        pushAttempted: true,
         pushOk: false,
       });
     }

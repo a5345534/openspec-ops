@@ -8,7 +8,7 @@
 ## 2. Push Failure Classification
 
 - [x] 2.1 Classify push authentication, remote rejection, and other push failures without generic `git_failed`.
-- [x] 2.2 Include remote, branch, commit-created/SHA, and push status in structured failure details.
+- [x] 2.2 Include remote, branch, commit-created/SHA, push-attempted, and push-success status in structured failure details.
 - [x] 2.3 Preserve clean rerun behavior without duplicate commits.
 
 ## 3. Tests and Documentation

@@ -6,7 +6,7 @@ Before staging or committing a dirty change worktree, ship SHALL resolve the req
 #### Scenario: requested remote is not configured
 - **WHEN** the requested or default remote does not exist in Git configuration
 - **THEN** ship fails with `remote_not_configured`
-- **AND** error details identify the remote, `commitCreated: false`, and `pushOk: false`
+- **AND** error details identify the remote, `commitCreated: false`, `pushAttempted: false`, and `pushOk: false`
 - **AND** no ship commit is created
 
 #### Scenario: explicit push URL is selected
@@ -35,13 +35,13 @@ Before staging or committing a dirty change worktree, ship SHALL resolve the req
 - **THEN** existing commit, push, and PR behavior proceeds unchanged
 
 ### Requirement: Ship failures report mutation facts and stable destination codes
-Destination-related ship errors SHALL retain schema version 1 and include enough structured detail to determine whether a ship commit was created and whether a push succeeded. Push-time authentication failures, remote rejection, and other push failures MUST have distinct codes rather than generic `git_failed`.
+Destination-related ship errors SHALL retain schema version 1 and include enough structured detail to determine whether a ship commit was created, whether a push was attempted, and whether that push succeeded. Push-time authentication failures, remote rejection, and other push failures MUST have distinct codes rather than generic `git_failed`.
 
 #### Scenario: push authentication fails after commit
 - **WHEN** preflight passes and ship creates a commit
 - **AND** Git push fails due to authentication or authorization
 - **THEN** ship fails with `push_auth_failed`
-- **AND** error details report `commitCreated: true`, the commit SHA, and `pushOk: false`
+- **AND** error details report `commitCreated: true`, the commit SHA, `pushAttempted: true`, and `pushOk: false`
 
 #### Scenario: remote rejects push
 - **WHEN** preflight passes
@@ -54,6 +54,11 @@ Destination-related ship errors SHALL retain schema version 1 and include enough
 - **AND** push fails for another reason such as network transport failure
 - **THEN** ship fails with `push_failed`
 - **AND** reports whether a commit was created and `pushOk: false`
+
+#### Scenario: push succeeds but PR backend fails
+- **WHEN** ship creates or reuses a commit and push succeeds
+- **AND** pull-request creation then fails
+- **THEN** error details preserve `commitCreated`, the commit SHA, `pushAttempted: true`, and `pushOk: true`
 
 #### Scenario: rerun after remediation
 - **WHEN** a prior ship created a commit but push failed

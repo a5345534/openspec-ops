@@ -6,7 +6,7 @@ A local-only repository can reach `ship`, receive a new commit, and only then fa
 
 - Preflight the requested remote before staging or committing: configured effective push URL, GitHub-compatible identity for the `gh` backend, authenticated `gh`, and repository existence.
 - Return stable structured errors for missing/invalid remotes, GitHub authentication failure, nonexistent GitHub repositories, and later push rejection/failure.
-- Include mutation facts (`commitCreated`, commit SHA when applicable, and `pushOk`) in ship error details.
+- Include mutation facts (`commitCreated`, commit SHA when applicable, `pushAttempted`, and `pushOk`) in destination-related ship error details.
 - Preserve existing successful configured-remote ship behavior and safe re-runs.
 - Document first-push history exposure and manual remediation.
 - Do not create GitHub repositories automatically; explicit repository bootstrap remains a separate future capability.

@@ -39,7 +39,7 @@ Require `schemaVersion === 1`. Use exit code + `error.code`.
 2. Prefer consent if large/unexpected diffs.
 3. Run ship with `--json`. Ship preflights the effective remote push URL, `gh` auth, and GitHub repository before creating a commit.
 4. Report PR URL or structured destination failure. Missing/invalid remote and GitHub repository/auth failures occur pre-commit; ship never creates a repository implicitly. Warn that first push publishes branch-reachable history.
-5. For `push_auth_failed`, `push_rejected`, `push_failed`, or post-push `pr_failed`, report `commitCreated`, `commitSha`, and `pushOk`; remediate and rerun (a clean tree creates no duplicate commit).
+5. For `push_auth_failed`, `push_rejected`, `push_failed`, or post-push `pr_failed`, report `commitCreated`, `commitSha`, `pushAttempted`, and `pushOk`; remediate and rerun (a clean tree creates no duplicate commit).
 6. After successful ship, offer `/ops-next <change>` — do **not** auto-run impl-review.
 
 ## Guardrails

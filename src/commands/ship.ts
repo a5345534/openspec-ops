@@ -167,6 +167,7 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
         branch: loc.branch,
         commitCreated: false,
         commitSha: null,
+        pushAttempted: false,
         pushOk: false,
       });
     }
@@ -178,6 +179,7 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
         branch: loc.branch,
         commitCreated: false,
         commitSha: null,
+        pushAttempted: false,
         pushOk: false,
       },
     );
@@ -215,6 +217,7 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
         branch: loc.branch,
         commitCreated,
         commitSha,
+        pushAttempted: true,
         pushOk: false,
       });
     }
@@ -256,12 +259,23 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
         throw new CliError(
           "nothing_to_ship",
           `Nothing to ship for '${loc.change}': clean worktree, not ahead of ${remote}/${loc.branch}, and no PR to create (${err.message})`,
-          { change: loc.change, branch: loc.branch, cause: err.message },
+          {
+            change: loc.change,
+            branch: loc.branch,
+            cause: err.message,
+            commitCreated,
+            commitSha,
+            pushAttempted: !pushSkipped,
+            pushOk: pushed,
+          },
         );
       }
       if (err.code === "pr_failed" || err.code === "pr_backend_unavailable") {
         throw new CliError(err.code, err.message, {
           ...err.details,
+          commitCreated,
+          commitSha,
+          pushAttempted: !pushSkipped,
           pushOk: pushed,
           hint:
             (err.details.hint as string | undefined) ??
@@ -273,6 +287,9 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
       throw err;
     }
     throw new CliError("pr_failed", err instanceof Error ? err.message : String(err), {
+      commitCreated,
+      commitSha,
+      pushAttempted: !pushSkipped,
       pushOk: pushed,
     });
   }
@@ -281,7 +298,14 @@ export function runShip(options: ShipOptions, deps: ShipDeps = defaultDeps): Shi
     throw new CliError(
       "nothing_to_ship",
       `Nothing to ship for '${loc.change}': clean worktree, branch not ahead of ${remote}/${loc.branch}, no PR`,
-      { change: loc.change, branch: loc.branch },
+      {
+        change: loc.change,
+        branch: loc.branch,
+        commitCreated,
+        commitSha,
+        pushAttempted: !pushSkipped,
+        pushOk: pushed,
+      },
     );
   }
 
