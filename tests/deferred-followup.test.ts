@@ -76,6 +76,24 @@ describe("deferFollowUpHandoff", () => {
     expect(events).toEqual(["send-returned", "accepted"]);
   });
 
+  it("does not misreport an accepted send when success notification fails", () => {
+    const { tasks, schedule } = controlledScheduler();
+    const rejected = vi.fn();
+
+    deferFollowUpHandoff({
+      message: "deliver",
+      schedule,
+      send: vi.fn(),
+      onAccepted: () => {
+        throw new Error("stale UI");
+      },
+      onRejected: rejected,
+    });
+
+    expect(() => tasks[0]!()).not.toThrow();
+    expect(rejected).not.toHaveBeenCalled();
+  });
+
   it("reports synchronous rejection once without success or retry", () => {
     const { tasks, schedule } = controlledScheduler();
     const send = vi.fn(() => {

@@ -17,6 +17,15 @@ function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
 }
 
+function notifySafely(notify: () => void): void {
+  try {
+    notify();
+  } catch {
+    // A stale UI must not turn an already accepted handoff into an unhandled
+    // timer exception or a false send rejection.
+  }
+}
+
 /**
  * Pi 0.80.7 compatibility workaround for earendil-works/pi#6728.
  *
@@ -38,9 +47,10 @@ export function deferFollowUpHandoff(
     dispatched = true;
     try {
       options.send(options.message, { deliverAs: "followUp" });
-      options.onAccepted();
     } catch (error) {
-      options.onRejected(asError(error));
+      notifySafely(() => options.onRejected(asError(error)));
+      return;
     }
+    notifySafely(options.onAccepted);
   });
 }
