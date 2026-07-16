@@ -147,6 +147,7 @@ Failure:
 ## Closeout behavior
 
 After removing the worktree (if any):
+- Clean worktrees with submodule gitlinks may require a CLI-internal, clean-gated structural `git worktree remove --force`; this is not operator `--force`, does not authorize dirty discard, and still reports `forced: false`
 - If PR for the change branch is **merged** → delete local (`-d`) and remote branch (unless `--keep-branch`)
 - If **not** merged → keep branch
 - No worktree + merged → branch-only cleanup still OK

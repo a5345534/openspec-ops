@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGit, type GitRunResult } from "../git.js";
 import { CliError } from "../types.js";
@@ -15,7 +15,7 @@ export interface TeardownOptions {
 
 export type PrepareWorktreeResult = {
   deinited: string[];
-  /** Residual submodule dirs removed after deinit / hollow leftovers */
+  /** Retained for result compatibility; preparation no longer removes gitlink paths. */
   cleared: string[];
 };
 
@@ -37,29 +37,10 @@ function looksInitialized(worktreePath: string, relPath: string): boolean {
 }
 
 /**
- * Remove a residual submodule work dir when it no longer looks initialized.
- * Safe for post-deinit hollow/empty directories that block worktree remove.
- */
-function clearResidualIfSafe(
-  worktreePath: string,
-  relPath: string,
-  cleared: string[],
-): void {
-  const abs = join(worktreePath, relPath);
-  if (!existsSync(abs)) return;
-  if (looksInitialized(worktreePath, relPath)) return;
-  try {
-    rmSync(abs, { recursive: true, force: true });
-    cleared.push(relPath);
-  } catch {
-    // Leave path; removeWorktree / retry may still fail with actionable error
-  }
-}
-
-/**
- * Deinitialize initialized top-level submodules inside a change worktree
- * so `git worktree remove` can succeed. Also clears residual non-initialized
- * directories for listed submodule paths (common post-deinit leftovers).
+ * Deinitialize initialized top-level submodules inside a change worktree.
+ * Hollow gitlink directories are intentionally preserved: deleting them makes
+ * an otherwise clean worktree appear dirty (` D <submodule>`). Git's structural
+ * containment rule is handled separately by the clean-gated remove path.
  */
 export function prepareWorktreeForRemoval(
   worktreePath: string,
@@ -90,8 +71,6 @@ export function prepareWorktreeForRemoval(
       }
       deinited.push(rel);
     }
-    // After successful deinit, or if never initialized but dir remains hollow
-    clearResidualIfSafe(worktreePath, rel, cleared);
   }
 
   if (failures.length > 0) {

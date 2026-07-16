@@ -70,7 +70,7 @@ Recommended order when you implement inside a submodule:
 `openspec-ops doctor` reports `submodule_detached` (info) and `submodule_detached_dirty` (warning).  
 Dirty `finish` messages mention submodule risk; openspec-ops never auto-commits submodules.
 
-**Finish + submodules:** before `git worktree remove`, finish **deinits** initialized top-level submodules in the change worktree (`git submodule deinit -f -- <path>`), then removes the worktree (branch kept). Dirty trees still need commit/stash or `--force`. If teardown fails: error `submodule_teardown_failed` with a manual deinit hint.
+**Finish + submodules:** before `git worktree remove`, finish **deinits** initialized top-level submodules in the change worktree (`git submodule deinit -f -- <path>`) while preserving hollow gitlink paths so the parent remains clean. If ordinary removal then hits Git's structural submodule-containment rule, finish freshly verifies the worktree is clean and performs one controlled internal `worktree remove --force`. This structural mechanism is not operator permission to discard data: dirty parent/submodule trees still require explicit operator `--force`, and `result.forced` only reports operator-authorized dirty discard. Persistent containment returns `submodule_teardown_failed` with an actionable hint.
 
 ### After deliver/finish: primary is not auto-updated
 
