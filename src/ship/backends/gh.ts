@@ -6,6 +6,8 @@ import type {
   MergedPullRequest,
   MergeStatusBackend,
   PrBackend,
+  PreflightRepositoryInput,
+  PreflightRepositoryResult,
 } from "../pr-backend.js";
 
 function runGh(
@@ -46,6 +48,112 @@ function ensureGhAvailable(cwd: string): void {
   }
 }
 
+export function parseGitHubRepositoryFromRemoteUrl(
+  remoteUrl: string,
+): string | null {
+  const value = remoteUrl.trim();
+  let path: string | null = null;
+
+  const scp = value.match(/^git@github\.com:([^/]+\/[^/]+)$/i);
+  if (scp) {
+    path = scp[1]!;
+  } else {
+    try {
+      const url = new URL(value);
+      if (
+        url.hostname.toLowerCase() !== "github.com" ||
+        !["https:", "ssh:"].includes(url.protocol)
+      ) {
+        return null;
+      }
+      path = url.pathname.replace(/^\/+|\/+$/g, "");
+    } catch {
+      return null;
+    }
+  }
+
+  const normalized = path.replace(/\.git$/i, "");
+  const parts = normalized.split("/");
+  if (
+    parts.length !== 2 ||
+    parts.some((part) => !part || /\s/.test(part))
+  ) {
+    return null;
+  }
+  return `${parts[0]}/${parts[1]}`;
+}
+
+function isRepositoryNotFoundMessage(message: string): boolean {
+  const value = message.toLowerCase();
+  return (
+    value.includes("could not resolve to a repository") ||
+    value.includes("repository not found") ||
+    value.includes("not found") ||
+    value.includes("http 404")
+  );
+}
+
+function preflightGhRepository(
+  input: PreflightRepositoryInput,
+): PreflightRepositoryResult {
+  ensureGhAvailable(input.cwd);
+  const repository = parseGitHubRepositoryFromRemoteUrl(input.remoteUrl);
+  if (!repository) {
+    throw new CliError(
+      "remote_invalid",
+      `Remote '${input.remote}' does not have a supported GitHub push URL.`,
+      {
+        backend: "gh",
+        remote: input.remote,
+        suggestedAction: "configure_github_remote",
+      },
+    );
+  }
+
+  const auth = runGh(["auth", "status", "--hostname", "github.com"], input.cwd);
+  if (auth.status !== 0) {
+    throw new CliError(
+      "github_auth_failed",
+      "GitHub CLI authentication is unavailable. Run `gh auth login --hostname github.com`.",
+      {
+        backend: "gh",
+        host: "github.com",
+        suggestedAction: "gh_auth_login",
+      },
+    );
+  }
+
+  const repo = runGh(
+    ["repo", "view", repository, "--json", "nameWithOwner"],
+    input.cwd,
+  );
+  if (repo.status !== 0) {
+    const message = repo.stderr.trim() || repo.stdout.trim();
+    if (isRepositoryNotFoundMessage(message)) {
+      throw new CliError(
+        "github_repository_not_found",
+        `GitHub repository '${repository}' could not be resolved. Create/configure it explicitly before ship; first review all history reachable from the branch because the first push publishes it.`,
+        {
+          backend: "gh",
+          repository,
+          suggestedAction: "configure_remote_or_create_repository",
+        },
+      );
+    }
+    throw new CliError(
+      "github_repository_unavailable",
+      `Could not verify GitHub repository '${repository}' with gh.`,
+      {
+        backend: "gh",
+        repository,
+        status: repo.status,
+        suggestedAction: "retry_repository_preflight",
+      },
+    );
+  }
+  return { repository };
+}
+
 function findExistingPr(
   cwd: string,
   head: string,
@@ -75,6 +183,7 @@ function findExistingPr(
 export function createGhBackend(): PrBackend {
   return {
     id: "gh",
+    preflightRepository: preflightGhRepository,
     createOrReusePullRequest(input: CreateOrReusePrInput): CreateOrReusePrResult {
       ensureGhAvailable(input.cwd);
 

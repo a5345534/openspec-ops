@@ -18,6 +18,14 @@ export type ErrorCode =
   | "git_failed"
   | "internal"
   | "nothing_to_ship"
+  | "remote_not_configured"
+  | "remote_invalid"
+  | "github_auth_failed"
+  | "github_repository_not_found"
+  | "github_repository_unavailable"
+  | "push_auth_failed"
+  | "push_rejected"
+  | "push_failed"
   | "pr_backend_unavailable"
   | "pr_failed"
   | "submodule_detached_dirty"
@@ -77,6 +85,10 @@ export function exitCodeForError(code: ErrorCode): ExitCode {
     case "ambiguous":
     case "submodule_detached_dirty":
     case "nothing_to_ship":
+    case "remote_not_configured":
+    case "remote_invalid":
+    case "github_repository_not_found":
+    case "push_rejected":
     case "worktree_exists":
     case "branch_not_merged":
     case "checks_failed":
@@ -92,6 +104,10 @@ export function exitCodeForError(code: ErrorCode): ExitCode {
     case "not_found":
       return 5;
     case "git_failed":
+    case "github_auth_failed":
+    case "github_repository_unavailable":
+    case "push_auth_failed":
+    case "push_failed":
     case "pr_backend_unavailable":
     case "pr_failed":
     case "internal":

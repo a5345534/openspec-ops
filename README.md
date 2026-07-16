@@ -361,6 +361,12 @@ Typical loop in Pi:
 /opsx-archive → /ops-finish  # finish cleans wt + merged branches
 ```
 
+### Ship destination preflight
+
+Before staging or committing, `openspec-ops ship` verifies the selected remote's effective **push URL**, `gh` authentication, and GitHub repository existence. Missing or invalid destinations fail without a ship commit using stable errors such as `remote_not_configured`, `remote_invalid`, `github_auth_failed`, and `github_repository_not_found`. Push-time failures are separated into `push_auth_failed`, `push_rejected`, and `push_failed`, with `commitCreated`, `commitSha`, and `pushOk` details so remediation and reruns are unambiguous.
+
+Ship never creates a GitHub repository or rewrites a remote. Configure/create the destination explicitly, choose visibility yourself, and review all history reachable from the branch before a first push because that history will be published.
+
 ### Prune (deprecated)
 
 ```bash

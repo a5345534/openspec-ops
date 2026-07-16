@@ -52,9 +52,9 @@ openspec-ops ship "<change>" [flags] --json
 | 0 | success | Report PR URL from `result.pr` |
 | 1 | `usage` / `invalid_change_name` | Fix args |
 | 2 | repo/base errors | Explain environment |
-| 3 | `submodule_detached_dirty`, `nothing_to_ship`, conflicts | Show details; fix submodule or state |
+| 3 | `submodule_detached_dirty`, `nothing_to_ship`, `remote_not_configured`, `remote_invalid`, `github_repository_not_found`, `push_rejected`, conflicts | Show structured details; fix destination/submodule/state |
 | 5 | `not_found` | Suggest `/ops-start` first |
-| 10 | `git_failed`, `pr_backend_unavailable`, `pr_failed`, `internal` | Show error; if `pr_failed` with push done, re-run ship after fixing `gh` (no new commit if clean) |
+| 10 | `github_auth_failed`, `github_repository_unavailable`, `push_auth_failed`, `push_failed`, `pr_backend_unavailable`, `pr_failed`, `internal` | Show mutation facts and remediation; a clean rerun creates no duplicate commit |
 
 ### Hard guardrails
 
@@ -82,10 +82,11 @@ openspec-ops ship "<change>" [flags] --json
    ```
 
 6. On success: report `result.pr.url`, branch, whether a commit was created.
-7. On `submodule_detached_dirty`: tell user to branch/commit inside the submodule first.
-8. On `pr_backend_unavailable`: install/auth `gh` (`gh auth login`).
-9. On `pr_failed` after push: fix PR issue and **re-run ship** (clean tree → no duplicate commit).
-10. **Next step (no auto):** After **successful** ship, offer `/ops-next <change>` (impl-review | ship again | merge | stop). Do **not** auto-run impl-review.
+7. On remote/GitHub preflight errors: report `remote`, repository identity when present, `commitCreated: false`, and `pushOk: false`; do not bootstrap a repository implicitly. Warn that first push publishes branch-reachable history.
+8. On `submodule_detached_dirty`: tell user to branch/commit inside the submodule first.
+9. On auth/repository errors: use the structured action (`gh auth login`, configure/create remote explicitly).
+10. On push/PR failure after a commit: report `commitCreated`, `commitSha`, and `pushOk`; fix the destination and **re-run ship** (clean tree → no duplicate commit).
+11. **Next step (no auto):** After **successful** ship, offer `/ops-next <change>` (impl-review | ship again | merge | stop). Do **not** auto-run impl-review.
 
 ## Guardrails
 
