@@ -187,6 +187,7 @@ describe("probeTopLevelSubmodules with injected git", () => {
         `[submodule "aos-core"]\n\tpath = aos-core\n\turl = ../x\n`,
       );
       mkdirSync(join(dir, "aos-core"));
+      writeFileSync(join(dir, "aos-core", ".git"), "gitdir: ../modules/aos-core\n");
 
       const runGit: GitRunner = (args) => {
         if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
@@ -219,6 +220,23 @@ describe("probeTopLevelSubmodules with injected git", () => {
     }
   });
 
+  it("skips hollow submodule paths without probing the parent repository", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ops-sub-hollow-"));
+    try {
+      writeFileSync(
+        join(dir, ".gitmodules"),
+        `[submodule "aos-core"]\n\tpath = aos-core\n\turl = ../x\n`,
+      );
+      mkdirSync(join(dir, "aos-core"));
+      const runGit: GitRunner = () => {
+        throw new Error("must not walk up to parent");
+      };
+      expect(probeTopLevelSubmodules(dir, { runGit })).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("skips submodule when probe git fails open", () => {
     const dir = mkdtempSync(join(tmpdir(), "ops-sub-fail-"));
     try {
@@ -227,6 +245,7 @@ describe("probeTopLevelSubmodules with injected git", () => {
         `[submodule "aos-core"]\n\tpath = aos-core\n\turl = ../x\n`,
       );
       mkdirSync(join(dir, "aos-core"));
+      writeFileSync(join(dir, "aos-core", ".git"), "gitdir: ../modules/aos-core\n");
       const runGit: GitRunner = () => {
         throw new Error("boom");
       };

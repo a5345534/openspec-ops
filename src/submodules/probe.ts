@@ -50,8 +50,9 @@ function probeOne(
   git: GitRunner,
 ): SubmoduleStatus | null {
   const abs = join(worktreeRoot, relPath);
-  // Missing / not checked out: skip (no issue). Listed in .gitmodules only is not enough.
-  if (!existsSync(abs)) {
+  // Missing, hollow, or not checked out: skip. Requiring the checkout marker
+  // prevents Git from walking up and probing the parent repository instead.
+  if (!existsSync(abs) || !existsSync(join(abs, ".git"))) {
     return null;
   }
 
