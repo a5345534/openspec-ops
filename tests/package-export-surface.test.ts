@@ -92,6 +92,18 @@ describe("package ops-only Pi surface", () => {
     }
   });
 
+  it("keeps finish skill and prompt aligned on return-to-main policy", () => {
+    for (const file of [
+      ".pi/skills/ops-finish/SKILL.md",
+      ".pi/prompts/ops-finish.md",
+    ]) {
+      const body = readFileSync(resolve(process.cwd(), file), "utf8");
+      expect(body, file).toContain("finish.return-to-main");
+      expect(body, file).toContain("--return-to-main");
+      expect(body, file).toContain("return_to_main_needs_human");
+    }
+  });
+
   it("clean build does not leave dist/auto-ensure", () => {
     expect(existsSync(resolve(process.cwd(), "dist/auto-ensure"))).toBe(false);
   });

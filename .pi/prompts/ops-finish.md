@@ -81,6 +81,7 @@ Failure:
 
 - Change name from `$@` (required).
 - Optional: `--path`, `--branch`, `--repo` if user requested.
+- `--return-to-main` when the operator requests strict local closeout or effective injected config states `finish.return-to-main=required`.
 - `--force` **only** after explicit user consent in this turn when dirty.
 
 ## Steps
@@ -117,6 +118,7 @@ Failure:
    | exit 0 | Report action (`removed` / `removed_and_pruned` / …); note whether branch was kept or deleted |
    | exit 4 `worktree_dirty` | Explain; ask about `--force`; do not retry with force unprompted |
    | exit 5 `not_found` | Nothing to finish |
+   | exit 3 `return_to_main_needs_human` | Hard-stop; report `details.primary`, `details.submodules`, and `details.worktreeRemoved`; never force or retry destructively |
    | exit 3/2/10 | Shared table |
 
 7. Success report:
@@ -133,6 +135,10 @@ Failure:
 
    - If PR is merged and `--keep-branch` was not set, local+remote branch may be deleted.
    - Archive remains `/opsx-archive` on the appropriate checkout.
+
+## Return-to-main policy
+
+Effective `finish.return-to-main=off` preserves the non-mutating default. Effective `required` maps to the single composite `--return-to-main` flag, which requires a clean primary, fetches and ff-only synchronizes its base, recursively updates submodule pins, resolves each initialized submodule remote default, and attaches only when the branch can end exactly at the parent gitlink without reset/force. Success JSON includes `sync.primary` and `sync.submodules`; incompatibility returns `return_to_main_needs_human`.
 
 ## Guardrails
 

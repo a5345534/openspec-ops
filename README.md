@@ -415,7 +415,6 @@ Precedence: **session > env > default**.
 `spec-review.max-rounds` default **3** (env: `OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS`).
 `impl-review.max-rounds` default **3** (env: `OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS`).
 `finish.return-to-main` accepts `off|required`, defaults to **off**, and uses env `OPENSPEC_OPS_FINISH_RETURN_TO_MAIN`. Effective `required` makes `/ops-deliver` pass strict `--return-to-main` at final finish; effective `off` preserves the non-mutating default.
-`impl-review.max-rounds` default **3** (env: `OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS`).
 
 ### Auto impl-review after ship
 
