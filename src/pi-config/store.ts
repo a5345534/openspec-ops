@@ -21,6 +21,11 @@ export const IMPL_REVIEW_MAX_ROUNDS_KEY = "impl-review.max-rounds";
 export const IMPL_REVIEW_MAX_ROUNDS_ENV = "OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS";
 export const IMPL_REVIEW_MAX_ROUNDS_DEFAULT = 3;
 
+export const FINISH_RETURN_TO_MAIN_KEY = "finish.return-to-main";
+export const FINISH_RETURN_TO_MAIN_ENV = "OPENSPEC_OPS_FINISH_RETURN_TO_MAIN";
+export const FINISH_RETURN_TO_MAIN_DEFAULT = "off" as const;
+export type FinishReturnToMainPolicy = "off" | "required";
+
 export const MAX_ROUNDS_MIN = 1;
 export const MAX_ROUNDS_MAX = 10;
 
@@ -43,7 +48,10 @@ const ROUND_KEYS: Record<
   },
 };
 
-const KNOWN_KEYS = new Set(Object.keys(ROUND_KEYS));
+const KNOWN_KEYS = new Set([
+  ...Object.keys(ROUND_KEYS),
+  FINISH_RETURN_TO_MAIN_KEY,
+]);
 
 export function resetSessionConfig(): void {
   SESSION.clear();
@@ -63,6 +71,10 @@ export function setSessionValue(key: string, value: string): void {
   }
   if (key in ROUND_KEYS) {
     SESSION.set(key, String(parseMaxRoundsStrict(value)));
+    return;
+  }
+  if (key === FINISH_RETURN_TO_MAIN_KEY) {
+    SESSION.set(key, parseFinishReturnToMainStrict(value));
     return;
   }
   SESSION.set(key, value);
@@ -91,6 +103,25 @@ export function parseMaxRoundsStrict(raw: string): number {
     );
   }
   return n;
+}
+
+export function parseFinishReturnToMainStrict(
+  raw: string,
+): FinishReturnToMainPolicy {
+  const value = String(raw).trim().toLowerCase();
+  if (value === "off" || value === "required") return value;
+  throw new Error("finish.return-to-main must be 'off' or 'required'");
+}
+
+function parseFinishReturnToMainLoose(
+  raw: string | undefined,
+): FinishReturnToMainPolicy | undefined {
+  if (raw == null || String(raw).trim() === "") return undefined;
+  try {
+    return parseFinishReturnToMainStrict(raw);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Soft parse env/default path: invalid env → ignore. */
@@ -122,6 +153,18 @@ function getEffectiveRoundsForKey(
   return { value: meta.defaultValue, source: "default" };
 }
 
+export function getEffectiveFinishReturnToMain(
+  env: NodeJS.ProcessEnv = process.env,
+): { value: FinishReturnToMainPolicy; source: ConfigSource } {
+  const session = SESSION.get(FINISH_RETURN_TO_MAIN_KEY);
+  if (session != null) {
+    return { value: parseFinishReturnToMainStrict(session), source: "session" };
+  }
+  const fromEnv = parseFinishReturnToMainLoose(env[FINISH_RETURN_TO_MAIN_ENV]);
+  if (fromEnv != null) return { value: fromEnv, source: "env" };
+  return { value: FINISH_RETURN_TO_MAIN_DEFAULT, source: "default" };
+}
+
 /** Spec-review max rounds (back-compat helper). */
 export function getEffectiveMaxRounds(
   env: NodeJS.ProcessEnv = process.env,
@@ -143,6 +186,10 @@ export function getEffectiveEntry(
     const { value, source } = getEffectiveRoundsForKey(key, env);
     return { key, value: String(value), source };
   }
+  if (key === FINISH_RETURN_TO_MAIN_KEY) {
+    const { value, source } = getEffectiveFinishReturnToMain(env);
+    return { key, value, source };
+  }
   if (!isKnownKey(key)) {
     throw new Error(`Unknown config key '${key}'`);
   }
@@ -160,11 +207,15 @@ export function formatConfigInjection(env: NodeJS.ProcessEnv = process.env): str
   );
   const impl = getEffectiveImplReviewMaxRounds(env);
   const spec = getEffectiveMaxRounds(env);
+  const closeout = getEffectiveFinishReturnToMain(env);
   return [
     "openspec-ops config (effective for this Pi session; not a project file):",
     ...lines.map((l) => `  ${l}`),
     "Change with /ops-config set|get|show|unset|reset. Session values reset when Pi restarts.",
     `For /ops-spec-review: use max rounds = ${spec.value} (source=${spec.source}).`,
     `For /ops-impl-review: use max rounds = ${impl.value} (source=${impl.source}).`,
+    closeout.value === "required"
+      ? "For /ops-deliver final finish: REQUIRED use --return-to-main; hard-stop on return_to_main_needs_human."
+      : "For /ops-deliver final finish: do not pass --return-to-main or primary sync flags unless explicitly requested.",
   ].join("\n");
 }

@@ -37,7 +37,8 @@ export type ErrorCode =
   | "primary_dirty"
   | "primary_diverged"
   | "sync_primary_failed"
-  | "sync_submodules_failed";
+  | "sync_submodules_failed"
+  | "return_to_main_needs_human";
 
 export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 10;
 
@@ -98,6 +99,7 @@ export function exitCodeForError(code: ErrorCode): ExitCode {
     case "primary_diverged":
     case "sync_primary_failed":
     case "sync_submodules_failed":
+    case "return_to_main_needs_human":
       return 3;
     case "worktree_dirty":
       return 4;
@@ -159,6 +161,8 @@ export interface FinishOptions extends ChangeOptions {
   syncSubmodules?: boolean;
   /** Opt-in: attach primary submodules to main when non-destructive */
   attachSubmoduleMain?: boolean;
+  /** Strict composite primary/submodule return-to-main closeout */
+  returnToMain?: boolean;
 }
 
 export interface ShipOptions extends ChangeOptions {
@@ -269,12 +273,36 @@ export interface FinishCloseoutHints {
   messages: string[];
 }
 
+export type ReturnToMainSubmoduleOutcome =
+  | "attached"
+  | "dirty"
+  | "fetch_failed"
+  | "default_unresolved"
+  | "gitlink_unresolved"
+  | "incompatible_default"
+  | "incompatible_local_branch"
+  | "switch_failed"
+  | "fast_forward_failed"
+  | "verification_failed";
+
+export interface ReturnToMainSubmoduleState {
+  path: string;
+  branch: string | null;
+  head: string | null;
+  gitlink: string | null;
+  remoteDefaultBranch: string | null;
+  attachOutcome: ReturnToMainSubmoduleOutcome;
+}
+
 export interface FinishSyncResult {
   syncPrimary: "skipped" | "ok" | "failed";
   syncSubmodules: "skipped" | "ok" | "failed";
   attachSubmoduleMain: "skipped" | "ok" | "partial" | "failed";
   attached: string[];
   diverged: string[];
+  required: boolean;
+  primary: { branch: string; head: string; remoteHead: string } | null;
+  submodules: ReturnToMainSubmoduleState[];
 }
 
 export interface SubmoduleBranchDiagnostic {

@@ -74,10 +74,10 @@ Dirty `finish` messages mention submodule risk; openspec-ops never auto-commits 
 
 Finish then **deinits** initialized top-level submodules in the change worktree (`git submodule deinit -f -- <path>`) while preserving hollow gitlink paths so the parent remains clean. If ordinary removal hits Git's structural submodule-containment rule, finish freshly verifies the worktree is clean and performs one controlled internal `worktree remove --force`. This structural mechanism is not operator permission to discard data: dirty parent/submodule trees still require explicit operator `--force`, and `result.forced` only reports operator-authorized dirty discard. Persistent containment returns `submodule_teardown_failed` with an actionable hint.
 
-### After deliver/finish: primary is not auto-updated
+### After deliver/finish: primary is not auto-updated by default
 
 **GitHub merge success ≠ primary checkout already on latest `main`.**  
-By design, `finish` does **not** `git pull` the primary worktree and does **not** re-init submodules on primary (avoids mutating the operator’s main checkout without consent).
+By default, `finish` does **not** `git pull` the primary worktree and does **not** re-init submodules on primary (avoids mutating the operator’s main checkout without consent). Operators can explicitly require strict return-to-main closeout as described below.
 
 Monorepo closeout checklist (manual):
 
@@ -99,8 +99,11 @@ Optional finish flags (default **off**):
 ```bash
 openspec-ops finish <change> --sync-primary          # clean primary only; ff-only pull
 openspec-ops finish <change> --sync-submodules       # submodule update --init --recursive on primary
-openspec-ops finish <change> --attach-submodule-main # only if pin == or ff from main; never force
+openspec-ops finish <change> --attach-submodule-main # legacy one-shot safe attachment
+openspec-ops finish <change> --return-to-main        # strict composite closeout
 ```
+
+`--return-to-main` requires a clean primary, fetches and ff-only synchronizes the resolved base, runs recursive submodule update, recursively resolves initialized submodule remote defaults, and attaches each only when its branch can end exactly at the immediate parent gitlink without reset/force. Success JSON reports `sync.primary` and `sync.submodules[]`. Dirty, unresolved, ahead, or diverged state returns `return_to_main_needs_human` with structured details and never auto-commits, resets, force-pushes, or discards work.
 
 Related: safe opt-in submodule **feature-branch pruning** remains a separate Phase B enhancement (issue #30); diagnostics never authorize deletion. This checklist is the **return-to-main** DoD (issue #24).
 
@@ -397,18 +400,21 @@ Optional: symlink these skills into `~/.pi/agent/skills/` for other repos; prefe
 
 ## Pi session config (`/ops-config`)
 
-Session-only settings (not a project config file; reset when Pi restarts).
+Session overrides are not project config and reset when Pi restarts. Supported environment fallbacks can provide persistent shell/automation policy.
 
 ```text
 /ops-config show
 /ops-config set spec-review.max-rounds 5
-/ops-config get spec-review.max-rounds
+/ops-config set finish.return-to-main required
+/ops-config get finish.return-to-main
 /ops-config unset spec-review.max-rounds
 /ops-config reset
 ```
 
 Precedence: **session > env > default**.  
 `spec-review.max-rounds` default **3** (env: `OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS`).
+`impl-review.max-rounds` default **3** (env: `OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS`).
+`finish.return-to-main` accepts `off|required`, defaults to **off**, and uses env `OPENSPEC_OPS_FINISH_RETURN_TO_MAIN`. Effective `required` makes `/ops-deliver` pass strict `--return-to-main` at final finish; effective `off` preserves the non-mutating default.
 `impl-review.max-rounds` default **3** (env: `OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS`).
 
 ### Auto impl-review after ship
@@ -435,7 +441,7 @@ Extension: `.pi/extensions/openspec-ops-guided.ts` (guided lifecycle).
 - **`/ops-start`** — manual worktree only  
 - **`/ops-next [change]`** — hard-coded next-step menu (`ctx.ui.select` or text; never auto-picks)
 - **`/ops-deliver <change>`** — batch start→finish after explore (reviews required; merge consent on invoke); extension binds slash args then skill follow-up  
-- **`/ops-config`** — session max-rounds for reviews  
+- **`/ops-config`** — session review limits and return-to-main policy
 - **`/ops-metrics`** — local opt-in model/cost, review-round, and deliver-reliability metrics (no LLM/report turn)
 
 **Removed:** auto-ensure on propose, auto-review settle fire, auto-finish, auto-impl-review after ship, intercept ensure-before-new-change.

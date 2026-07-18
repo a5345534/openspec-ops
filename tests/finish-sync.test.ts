@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   attachSubmodulesToMainIfSafe,
+  returnPrimaryAndSubmodulesToMain,
   syncPrimaryCheckout,
   syncPrimarySubmodules,
   type FinishSyncDeps,
@@ -162,6 +163,102 @@ describe("attachSubmodulesToMainIfSafe", () => {
   });
 });
 
+describe("strict return-to-main", () => {
+  function recursiveDeps(incompatible = false): FinishSyncDeps {
+    const pinFor = (cwd: string) => cwd.endsWith("/inner") ? "pin-inner" : "pin-outer";
+    return syncDeps({
+      resolveBase: () => "origin/main",
+      revParse: (_cwd, rev) => rev === "HEAD" || rev === "origin/main" ? "primary-tip" : rev,
+      refExists: (cwd, ref) => cwd === "/repo" && ref === "origin/main",
+      isDirty: () => false,
+      runGit: (args, options) => {
+        const cwd = options?.cwd ?? "";
+        if (args[0] === "status") return { status: 0, stdout: "", stderr: "" };
+        if (args[0] === "config") {
+          if (cwd === "/repo") {
+            return { status: 0, stdout: "submodule.outer.path\nmodules/outer\0", stderr: "" };
+          }
+          if (cwd.endsWith("/modules/outer")) {
+            return { status: 0, stdout: "submodule.inner.path\ninner\0", stderr: "" };
+          }
+          return { status: 1, stdout: "", stderr: "" };
+        }
+        if (args[0] === "symbolic-ref" && args[1] === "-q") {
+          return { status: 0, stdout: "refs/heads/main\n", stderr: "" };
+        }
+        if (args[0] === "symbolic-ref") {
+          return { status: 0, stdout: "refs/remotes/origin/master\n", stderr: "" };
+        }
+        if (args[0] === "branch") {
+          return { status: 0, stdout: "master\n", stderr: "" };
+        }
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return { status: 0, stdout: "true\n", stderr: "" };
+        }
+        if (args[0] === "rev-parse" && String(args[1]).startsWith("HEAD:")) {
+          const pin = args[1] === "HEAD:inner" ? "pin-inner" : "pin-outer";
+          return { status: 0, stdout: `${pin}\n`, stderr: "" };
+        }
+        if (args[0] === "rev-parse" && args[1] === "origin/master") {
+          return {
+            status: 0,
+            stdout: `${incompatible && cwd.endsWith("/inner") ? "ahead-inner" : pinFor(cwd)}\n`,
+            stderr: "",
+          };
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return { status: 0, stdout: `${pinFor(cwd)}\n`, stderr: "" };
+        }
+        if (args[0] === "merge-base") {
+          return { status: incompatible ? 1 : 0, stdout: "", stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+  }
+
+  it("recursively reports and attaches resolved non-main defaults", () => {
+    const result = returnPrimaryAndSubmodulesToMain(
+      "/repo",
+      { remote: "origin", worktreeRemoved: true },
+      recursiveDeps(),
+    );
+    expect(result.primary).toEqual({
+      branch: "main",
+      head: "primary-tip",
+      remoteHead: "primary-tip",
+    });
+    expect(result.submodules.map((row) => row.path)).toEqual([
+      "modules/outer",
+      "modules/outer/inner",
+    ]);
+    expect(result.submodules.every((row) =>
+      row.remoteDefaultBranch === "master" && row.attachOutcome === "attached"
+    )).toBe(true);
+  });
+
+  it("fails with structured nested incompatibility diagnostics", () => {
+    try {
+      returnPrimaryAndSubmodulesToMain(
+        "/repo",
+        { remote: "origin", worktreeRemoved: true },
+        recursiveDeps(true),
+      );
+      expect.fail("throw");
+    } catch (error) {
+      const cli = error as CliError;
+      expect(cli.code).toBe("return_to_main_needs_human");
+      expect(cli.details.worktreeRemoved).toBe(true);
+      expect(cli.details.submodules).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          path: "modules/outer/inner",
+          attachOutcome: "incompatible_default",
+        }),
+      ]));
+    }
+  });
+});
+
 describe("runFinish sync integration", () => {
   function whereOk(): WhereResult {
     return {
@@ -253,6 +350,45 @@ describe("runFinish sync integration", () => {
       expect((e as CliError).code).toBe("primary_dirty");
       expect((e as CliError).details.worktreeRemoved).toBe(true);
     }
+  });
+
+  it("strict composite reports required primary snapshot", () => {
+    const r = runFinish(
+      { ...opts, returnToMain: true },
+      baseDeps({
+        finishSyncDeps: syncDeps({
+          runGit: (args) => {
+            if (args[0] === "status") {
+              return { status: 0, stdout: "", stderr: "" };
+            }
+            if (args[0] === "config") {
+              return { status: 1, stdout: "", stderr: "" };
+            }
+            if (args[0] === "symbolic-ref") {
+              return { status: 0, stdout: "refs/heads/main\n", stderr: "" };
+            }
+            return { status: 0, stdout: "", stderr: "" };
+          },
+        }),
+        detectBehind: () => ({
+          behind: false,
+          baseBranch: "main",
+          originBaseRef: "origin/main",
+          primaryHead: "newhead",
+          originHead: "newhead",
+          reason: "ok",
+        }),
+      }),
+    );
+    expect(r.sync.required).toBe(true);
+    expect(r.sync.syncPrimary).toBe("ok");
+    expect(r.sync.syncSubmodules).toBe("ok");
+    expect(r.sync.attachSubmoduleMain).toBe("ok");
+    expect(r.sync.primary).toEqual({
+      branch: "main",
+      head: "newhead",
+      remoteHead: "newhead",
+    });
   });
 
   it("sync-primary ok path", () => {
