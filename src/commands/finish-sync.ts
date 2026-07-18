@@ -119,15 +119,21 @@ export function syncPrimaryCheckout(
     onBase = m?.[1] === baseBranch;
   }
   if (!onBase) {
-    const sw = deps.runGit(["switch", baseBranch], {
+    let sw = deps.runGit(["switch", baseBranch], {
       cwd: primaryPath,
       allowFailure: true,
     });
+    if (sw.status !== 0 && !deps.refExists(primaryPath, `refs/heads/${baseBranch}`)) {
+      sw = deps.runGit(
+        ["switch", "-c", baseBranch, "--track", originBase],
+        { cwd: primaryPath, allowFailure: true },
+      );
+    }
     if (sw.status !== 0) {
       throw new CliError(
         "sync_primary_failed",
         `Cannot --sync-primary: failed to switch to ${baseBranch}: ${sw.stderr || sw.stdout}`,
-        { ...detailsBase, baseBranch },
+        { ...detailsBase, baseBranch, originBase },
       );
     }
   }
@@ -524,6 +530,16 @@ export function returnPrimaryAndSubmodulesToMain(
       }
     }
 
+    const restorePin = (): { head: string | null; branch: string | null } => {
+      deps.runGit(["switch", "--detach", gitlink], {
+        cwd: row.abs,
+        allowFailure: true,
+      });
+      return {
+        head: gitText(deps, row.abs, ["rev-parse", "HEAD"]),
+        branch: currentBranch(deps, row.abs),
+      };
+    };
     const switched = deps.runGit(
       localExists
         ? ["switch", defaultRef.branch]
@@ -531,7 +547,7 @@ export function returnPrimaryAndSubmodulesToMain(
       { cwd: row.abs, allowFailure: true },
     );
     if (switched.status !== 0) {
-      states.push(failureState(row, "switch_failed", { head, branch, ...common }));
+      states.push(failureState(row, "switch_failed", { ...restorePin(), ...common }));
       continue;
     }
     const afterSwitch = gitText(deps, row.abs, ["rev-parse", "HEAD"]);
@@ -542,8 +558,7 @@ export function returnPrimaryAndSubmodulesToMain(
       });
       if (ff.status !== 0) {
         states.push(failureState(row, "fast_forward_failed", {
-          head: afterSwitch,
-          branch: defaultRef.branch,
+          ...restorePin(),
           ...common,
         }));
         continue;
@@ -551,13 +566,18 @@ export function returnPrimaryAndSubmodulesToMain(
     }
     const finalHead = gitText(deps, row.abs, ["rev-parse", "HEAD"]);
     const finalBranch = currentBranch(deps, row.abs);
-    states.push(failureState(
-      row,
-      finalHead === gitlink && finalBranch === defaultRef.branch
-        ? "attached"
-        : "verification_failed",
-      { head: finalHead, branch: finalBranch, ...common },
-    ));
+    if (finalHead !== gitlink || finalBranch !== defaultRef.branch) {
+      states.push(failureState(row, "verification_failed", {
+        ...restorePin(),
+        ...common,
+      }));
+      continue;
+    }
+    states.push(failureState(row, "attached", {
+      head: finalHead,
+      branch: finalBranch,
+      ...common,
+    }));
   }
 
   const snapshot = {

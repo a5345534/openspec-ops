@@ -43,6 +43,36 @@ describe("syncPrimaryCheckout", () => {
     expect(calls.some((a) => a[0] === "pull" && a.includes("--ff-only"))).toBe(true);
   });
 
+  it("creates a missing local base as a tracking branch without force", () => {
+    const calls: string[][] = [];
+    const r = syncPrimaryCheckout(
+      "/repo",
+      {},
+      syncDeps({
+        refExists: (_cwd, ref) => ref === "origin/main",
+        runGit: (args) => {
+          calls.push(args);
+          if (args[0] === "symbolic-ref") {
+            return { status: 0, stdout: "refs/heads/topic\n", stderr: "" };
+          }
+          if (args[0] === "switch" && args.length === 2) {
+            return { status: 1, stdout: "", stderr: "unknown branch" };
+          }
+          return { status: 0, stdout: "", stderr: "" };
+        },
+      }),
+    );
+    expect(r.ok).toBe(true);
+    expect(calls).toContainEqual([
+      "switch",
+      "-c",
+      "main",
+      "--track",
+      "origin/main",
+    ]);
+    expect(calls.flat()).not.toContain("-C");
+  });
+
   it("refuses dirty primary", () => {
     try {
       syncPrimaryCheckout("/repo", { worktreeRemoved: true }, syncDeps({ isDirty: () => true }));
@@ -235,6 +265,85 @@ describe("strict return-to-main", () => {
     expect(result.submodules.every((row) =>
       row.remoteDefaultBranch === "master" && row.attachOutcome === "attached"
     )).toBe(true);
+  });
+
+  it("restores the detached parent pin when ff-only attachment fails", () => {
+    let subHead = "pin";
+    let subBranch: string | null = null;
+    const deps = syncDeps({
+      resolveBase: () => "origin/main",
+      revParse: (_cwd, rev) => rev === "HEAD" || rev === "origin/main" ? "primary" : rev,
+      refExists: (cwd, ref) =>
+        (cwd === "/repo" && ref === "origin/main") ||
+        (cwd === "/repo/sub" && ref === "refs/heads/main"),
+      isDirty: () => false,
+      runGit: (args, options) => {
+        const cwd = options?.cwd ?? "";
+        if (args[0] === "status") return { status: 0, stdout: "", stderr: "" };
+        if (args[0] === "config") {
+          return cwd === "/repo"
+            ? { status: 0, stdout: "submodule.sub.path\nsub\0", stderr: "" }
+            : { status: 1, stdout: "", stderr: "" };
+        }
+        if (args[0] === "symbolic-ref" && args[1] === "-q") {
+          return { status: 0, stdout: "refs/heads/main\n", stderr: "" };
+        }
+        if (args[0] === "symbolic-ref") {
+          return { status: 0, stdout: "refs/remotes/origin/main\n", stderr: "" };
+        }
+        if (args[0] === "branch") {
+          return { status: 0, stdout: subBranch ? `${subBranch}\n` : "", stderr: "" };
+        }
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return { status: 0, stdout: "true\n", stderr: "" };
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD:sub") {
+          return { status: 0, stdout: "pin\n", stderr: "" };
+        }
+        if (args[0] === "rev-parse" && args[1] === "origin/main") {
+          return { status: 0, stdout: "old\n", stderr: "" };
+        }
+        if (args[0] === "rev-parse" && args[1] === "refs/heads/main") {
+          return { status: 0, stdout: "old\n", stderr: "" };
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return { status: 0, stdout: `${subHead}\n`, stderr: "" };
+        }
+        if (args[0] === "switch" && args[1] === "main") {
+          subHead = "old";
+          subBranch = "main";
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (args[0] === "switch" && args[1] === "--detach") {
+          subHead = "pin";
+          subBranch = null;
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (args[0] === "merge") {
+          return { status: 1, stdout: "", stderr: "locked" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+    try {
+      returnPrimaryAndSubmodulesToMain(
+        "/repo",
+        { remote: "origin", worktreeRemoved: true },
+        deps,
+      );
+      expect.fail("throw");
+    } catch (error) {
+      const cli = error as CliError;
+      expect(cli.code).toBe("return_to_main_needs_human");
+      expect(cli.details.submodules).toEqual([
+        expect.objectContaining({
+          path: "sub",
+          head: "pin",
+          branch: null,
+          attachOutcome: "fast_forward_failed",
+        }),
+      ]);
+    }
   });
 
   it("fails with structured nested incompatibility diagnostics", () => {
