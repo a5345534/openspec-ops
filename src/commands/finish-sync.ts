@@ -360,6 +360,19 @@ function inventorySubmodules(
   return rows;
 }
 
+function resolveSubmoduleRemote(
+  cwd: string,
+  preferred: string,
+  deps: FinishSyncDeps,
+): string | null {
+  const result = deps.runGit(["remote"], { cwd, allowFailure: true });
+  if (result.status !== 0) return null;
+  const remotes = result.stdout.split(/\s+/).map((value) => value.trim()).filter(Boolean);
+  if (remotes.includes("origin")) return "origin";
+  if (remotes.includes(preferred)) return preferred;
+  return remotes.length === 1 ? remotes[0]! : null;
+}
+
 function resolveRemoteDefault(
   cwd: string,
   remote: string,
@@ -477,7 +490,12 @@ export function returnPrimaryAndSubmodulesToMain(
       states.push(failureState(row, "dirty", { head, branch, gitlink }));
       continue;
     }
-    const fetch = deps.runGit(["fetch", "--prune", remote], {
+    const submoduleRemote = resolveSubmoduleRemote(row.abs, remote, deps);
+    if (!submoduleRemote) {
+      states.push(failureState(row, "default_unresolved", { head, branch, gitlink }));
+      continue;
+    }
+    const fetch = deps.runGit(["fetch", "--prune", submoduleRemote], {
       cwd: row.abs,
       allowFailure: true,
     });
@@ -485,7 +503,7 @@ export function returnPrimaryAndSubmodulesToMain(
       states.push(failureState(row, "fetch_failed", { head, branch, gitlink }));
       continue;
     }
-    const defaultRef = resolveRemoteDefault(row.abs, remote, deps);
+    const defaultRef = resolveRemoteDefault(row.abs, submoduleRemote, deps);
     if (!defaultRef) {
       states.push(failureState(row, "default_unresolved", { head, branch, gitlink }));
       continue;

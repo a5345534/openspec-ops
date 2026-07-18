@@ -217,7 +217,15 @@ describe("strict return-to-main", () => {
           return { status: 0, stdout: "refs/heads/main\n", stderr: "" };
         }
         if (args[0] === "symbolic-ref") {
-          return { status: 0, stdout: "refs/remotes/origin/master\n", stderr: "" };
+          const remote = cwd.endsWith("/inner") ? "upstream" : "origin";
+          return { status: 0, stdout: `refs/remotes/${remote}/master\n`, stderr: "" };
+        }
+        if (args[0] === "remote" && args.length === 1) {
+          return {
+            status: 0,
+            stdout: cwd.endsWith("/inner") ? "upstream\n" : "origin\n",
+            stderr: "",
+          };
         }
         if (args[0] === "branch") {
           return { status: 0, stdout: "master\n", stderr: "" };
@@ -229,7 +237,10 @@ describe("strict return-to-main", () => {
           const pin = args[1] === "HEAD:inner" ? "pin-inner" : "pin-outer";
           return { status: 0, stdout: `${pin}\n`, stderr: "" };
         }
-        if (args[0] === "rev-parse" && args[1] === "origin/master") {
+        if (
+          args[0] === "rev-parse" &&
+          (args[1] === "origin/master" || args[1] === "upstream/master")
+        ) {
           return {
             status: 0,
             stdout: `${incompatible && cwd.endsWith("/inner") ? "ahead-inner" : pinFor(cwd)}\n`,
@@ -290,6 +301,9 @@ describe("strict return-to-main", () => {
         }
         if (args[0] === "symbolic-ref") {
           return { status: 0, stdout: "refs/remotes/origin/main\n", stderr: "" };
+        }
+        if (args[0] === "remote" && args.length === 1) {
+          return { status: 0, stdout: "origin\n", stderr: "" };
         }
         if (args[0] === "branch") {
           return { status: 0, stdout: subBranch ? `${subBranch}\n` : "", stderr: "" };
