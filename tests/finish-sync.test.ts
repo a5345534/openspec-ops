@@ -206,9 +206,9 @@ describe("strict return-to-main", () => {
         if (args[0] === "status") return { status: 0, stdout: "", stderr: "" };
         if (args[0] === "config") {
           if (cwd === "/repo") {
-            return { status: 0, stdout: "submodule.outer.path\nmodules/outer\0", stderr: "" };
+            return { status: 0, stdout: "submodule.outer.path\nmodules/outer space\0", stderr: "" };
           }
-          if (cwd.endsWith("/modules/outer")) {
+          if (cwd.endsWith("/modules/outer space")) {
             return { status: 0, stdout: "submodule.inner.path\ninner\0", stderr: "" };
           }
           return { status: 1, stdout: "", stderr: "" };
@@ -270,8 +270,8 @@ describe("strict return-to-main", () => {
       remoteHead: "primary-tip",
     });
     expect(result.submodules.map((row) => row.path)).toEqual([
-      "modules/outer",
-      "modules/outer/inner",
+      "modules/outer space",
+      "modules/outer space/inner",
     ]);
     expect(result.submodules.every((row) =>
       row.remoteDefaultBranch === "master" && row.attachOutcome === "attached"
@@ -374,7 +374,7 @@ describe("strict return-to-main", () => {
       expect(cli.details.worktreeRemoved).toBe(true);
       expect(cli.details.submodules).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          path: "modules/outer/inner",
+          path: "modules/outer space/inner",
           attachOutcome: "incompatible_default",
         }),
       ]));

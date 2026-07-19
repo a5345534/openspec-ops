@@ -324,7 +324,10 @@ function submodulePaths(deps: FinishSyncDeps, cwd: string): string[] {
   if (result.status !== 0 || !result.stdout) return [];
   return result.stdout
     .split("\0")
-    .map((entry) => entry.trim().split(/\n|\s+/).at(-1) ?? "")
+    .map((entry) => {
+      const newline = entry.indexOf("\n");
+      return newline >= 0 ? entry.slice(newline + 1) : "";
+    })
     .filter(Boolean);
 }
 
