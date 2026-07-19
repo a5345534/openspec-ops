@@ -3,9 +3,7 @@
 ## Purpose
 
 Pi session configuration for openspec-ops via /ops-config (no project config files).
-
 ## Requirements
-
 ### Requirement: Pi ops-config command for session settings
 The Pi extension surface SHALL provide an `ops-config` command (slash `/ops-config`) to show, get, set, unset, and reset openspec-ops settings for the **current Pi session**.
 
@@ -48,7 +46,6 @@ v1 ops-config MUST document that values are session-scoped and are not guarantee
 - **WHEN** reading ops-config help or README section
 - **THEN** it states that settings are session-scoped and not project config files
 
-
 ---
 
 ### Requirement: impl-review max-rounds config key
@@ -57,3 +54,23 @@ ops-config SHALL support `impl-review.max-rounds` as a positive integer (clamped
 #### Scenario: session override for impl-review
 - **WHEN** session sets `impl-review.max-rounds` to `5`
 - **THEN** effective impl-review max rounds is 5
+
+### Requirement: Return-to-main policy config key
+`ops-config` SHALL support `finish.return-to-main` with values `off` and `required`. Its effective value SHALL resolve with session override first, then environment `OPENSPEC_OPS_FINISH_RETURN_TO_MAIN`, then default `off`.
+
+#### Scenario: session enables strict closeout
+- **WHEN** the operator runs `/ops-config set finish.return-to-main required`
+- **THEN** the injected effective configuration reports `required` with source `session`
+
+#### Scenario: environment provides persistent opt-in
+- **WHEN** no session override exists
+- **AND** `OPENSPEC_OPS_FINISH_RETURN_TO_MAIN=required`
+- **THEN** the effective policy is `required` with source `env`
+
+#### Scenario: invalid policy is rejected
+- **WHEN** an operator attempts to set `finish.return-to-main` to a value other than `off` or `required`
+- **THEN** the command refuses to store the value
+
+#### Scenario: default remains non-mutating
+- **WHEN** neither session nor environment configures the policy
+- **THEN** the effective value is `off` with source `default`
