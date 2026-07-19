@@ -69,6 +69,10 @@ export {
   type UsageAggregate,
 } from "./report.js";
 export {
+  recognizeMetricsInput,
+  type RecognizedMetricsInput,
+} from "./input-recognition.js";
+export {
   LifecycleMetricsRuntime,
   actionFromShellCommand,
   changeFromShellCommand,

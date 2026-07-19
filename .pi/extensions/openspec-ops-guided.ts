@@ -70,7 +70,7 @@ import {
   hashSessionId,
   hasPriorUnsuccessfulAttempt,
   parseJsonEnvelope,
-  parseLifecycleSlash,
+  recognizeMetricsInput,
   readMetricsConfig,
   readMetricsRecords,
   resetMetricsData,
@@ -235,7 +235,9 @@ export default function (pi: ExtensionAPI) {
   pi.on("input", async (event, ctx) => {
     if (event.source !== "extension") observeOperatorLanguage(event.text);
     if (!metricsEnabled) return { action: "continue" as const };
-    const parsed = parseLifecycleSlash(event.text);
+    const parsed = event.source === "extension"
+      ? null
+      : recognizeMetricsInput(event.text);
     if (parsed) {
       ensureMetrics(ctx).setAction(
         parsed.change,

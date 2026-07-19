@@ -1,9 +1,23 @@
-import type { LifecycleStation, NextActionId } from "../next-step/edges.js";
+import type { LifecycleStation } from "../next-step/edges.js";
 
 export const METRICS_SCHEMA_VERSION = 2 as const;
 export const LEGACY_METRICS_SCHEMA_VERSION = 1 as const;
 
-export type MetricsAction = NextActionId | "ops-deliver-overhead" | "unknown";
+export type MetricsAction =
+  | "opsx-explore"
+  | "ops-start"
+  | "opsx-propose"
+  | "ops-spec-review"
+  | "opsx-apply"
+  | "ops-ship"
+  | "ops-impl-review"
+  | "ops-merge"
+  | "opsx-sync"
+  | "opsx-archive"
+  | "ops-finish"
+  | "stop"
+  | "ops-deliver-overhead"
+  | "unknown";
 export type AttributionSource = "observed" | "declared" | "unknown";
 export type ReviewType = "spec" | "impl";
 export type ReviewVerdict = "continue" | "ready" | "needs_human";
@@ -117,6 +131,7 @@ export type ActiveMetricsContext = {
 };
 
 export const METRICS_ACTIONS: readonly MetricsAction[] = [
+  "opsx-explore",
   "ops-start",
   "opsx-propose",
   "ops-spec-review",
@@ -124,6 +139,7 @@ export const METRICS_ACTIONS: readonly MetricsAction[] = [
   "ops-ship",
   "ops-impl-review",
   "ops-merge",
+  "opsx-sync",
   "opsx-archive",
   "ops-finish",
   "stop",

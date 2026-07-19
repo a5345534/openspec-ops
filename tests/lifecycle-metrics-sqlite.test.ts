@@ -243,6 +243,33 @@ describe("optional SQLite metrics projection", () => {
     }
   });
 
+  it("projects expanded OpenSpec activities without reclassifying them", async () => {
+    const agentDir = tempAgent();
+    const path = join(agentDir, "flow.sqlite3");
+    try {
+      appendMetricsRecord(agentDir, {
+        ...turn("explore-record", 1),
+        change: null,
+        action: "opsx-explore",
+      });
+      appendMetricsRecord(agentDir, {
+        ...turn("sync-record", 2),
+        action: "opsx-sync",
+      });
+      await initMetricsSqlite(agentDir, path);
+      expect(await syncMetricsSqlite(agentDir)).toMatchObject({
+        inserted: 2,
+        malformed: 0,
+      });
+      const data = await readMetricsSqlite(agentDir);
+      expect(data.records.map((record) =>
+        record.kind === "turn" ? record.action : null
+      )).toEqual(["opsx-explore", "opsx-sync"]);
+    } finally {
+      rmSync(agentDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps a configured DB inside the metrics directory during JSON reset", async () => {
     const agentDir = tempAgent();
     const path = join(metricsDataDir(agentDir), "projection.sqlite3");

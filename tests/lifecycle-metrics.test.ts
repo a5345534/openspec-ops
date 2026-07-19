@@ -24,6 +24,7 @@ import {
   parseMetricsMarkers,
   readMetricsConfig,
   readMetricsRecords,
+  recognizeMetricsInput,
   resetMetricsData,
   reviewMarkerLine,
   sessionMetricsPath,
@@ -127,7 +128,10 @@ describe("lifecycle metrics storage", () => {
       expect(readMetricsConfig(dir)).toEqual({ enabled: true });
       expect(existsSync(metricsConfigPath(dir))).toBe(true);
 
-      const record = turn("opsx-apply", "observed");
+      const record = {
+        ...turn("opsx-explore", "observed"),
+        change: null,
+      };
       appendMetricsRecord(dir, record);
       appendFileSync(
         sessionMetricsPath(dir, record.sessionIdHash),
@@ -162,14 +166,16 @@ describe("lifecycle metrics storage", () => {
 describe("lifecycle metrics reports", () => {
   it("aggregates usage by action/model and exposes attribution coverage", () => {
     const report = buildMetricsReport([
-      turn("opsx-apply", "observed", 2),
+      turn("opsx-explore", "observed", 2),
+      turn("opsx-sync", "observed", 1),
       turn("unknown", "unknown", 1),
     ]);
-    expect(report.usage.total.turns).toBe(2);
-    expect(report.usage.byAction["opsx-apply"]?.cost).toBe(2);
-    expect(report.usage.byModel["p/m"]?.turns).toBe(2);
-    expect(report.usage.attributionCoverage).toBeCloseTo(0.5);
-    expect(formatMetricsReport(report)).toContain("Attribution coverage: 50.0%");
+    expect(report.usage.total.turns).toBe(3);
+    expect(report.usage.byAction["opsx-explore"]?.cost).toBe(2);
+    expect(report.usage.byAction["opsx-sync"]?.cost).toBe(1);
+    expect(report.usage.byModel["p/m"]?.turns).toBe(3);
+    expect(report.usage.attributionCoverage).toBeCloseTo(2 / 3);
+    expect(formatMetricsReport(report)).toContain("Attribution coverage: 66.7%");
   });
 
   it("renders an exact compact empty report with cost provenance", () => {
@@ -410,6 +416,38 @@ describe("lifecycle metrics runtime", () => {
     expect(end?.endStation).toBe("done");
   });
 
+  it("bounds activity context to one settled agent invocation", () => {
+    const records: MetricsRecord[] = [];
+    const runtime = new LifecycleMetricsRuntime({
+      sessionIdHash: "abc",
+      enabled: () => true,
+      append: (record) => records.push(record),
+    });
+    runtime.setAction(null, "opsx-explore", "observed", null);
+    runtime.recordTurn({
+      text: "",
+      provider: "p",
+      model: "m",
+      usage: usage(),
+      context: null,
+    });
+    runtime.settleAgent("unknown");
+    runtime.recordTurn({
+      text: "",
+      provider: "p",
+      model: "m",
+      usage: usage(),
+      context: null,
+    });
+    const turns = records.filter(
+      (record): record is TurnMetricRecord => record.kind === "turn",
+    );
+    expect(turns.map((turn) => turn.action)).toEqual([
+      "opsx-explore",
+      "unknown",
+    ]);
+  });
+
   it("records missing review summary instead of inferring", () => {
     const records: MetricsRecord[] = [];
     const runtime = new LifecycleMetricsRuntime({
@@ -485,6 +523,70 @@ describe("lifecycle metrics runtime", () => {
 });
 
 describe("mechanical lifecycle recognition", () => {
+  it("recognizes full-flow raw slash activities conservatively", () => {
+    expect(recognizeMetricsInput("/opsx-explore")?.action).toBe("opsx-explore");
+    expect(recognizeMetricsInput("/opsx:sync demo-change")).toEqual({
+      action: "opsx-sync",
+      change: "demo-change",
+    });
+    expect(recognizeMetricsInput("/opsx-propose build a feature")).toEqual({
+      action: "opsx-propose",
+      change: null,
+    });
+    expect(recognizeMetricsInput("let us explore synchronization options")).toBeNull();
+  });
+
+  it("recognizes supported expanded stock OpenSpec prompt signatures", () => {
+    const cases: Array<[string, string, string | null]> = [
+      ["opsx-explore.md", "opsx-explore", null],
+      ["opsx-propose.md", "opsx-propose", "demo-change"],
+      ["opsx-apply.md", "opsx-apply", "demo-change"],
+      ["opsx-sync.md", "opsx-sync", "demo-change"],
+      ["opsx-archive.md", "opsx-archive", "demo-change"],
+    ];
+    for (const [file, action, change] of cases) {
+      const fixture = readFileSync(
+        join(process.cwd(), "vendor/openspec-pi-ref/prompts", file),
+        "utf8",
+      ).replace("$@", change ?? "free-form discovery topic");
+      expect(recognizeMetricsInput(fixture), file).toEqual({ action, change });
+    }
+  });
+
+  it("recognizes supported stock OpenSpec skill signatures", () => {
+    const cases: Array<[string, string]> = [
+      ["openspec-explore/SKILL.md", "opsx-explore"],
+      ["openspec-propose/SKILL.md", "opsx-propose"],
+      ["openspec-apply-change/SKILL.md", "opsx-apply"],
+      ["openspec-sync-specs/SKILL.md", "opsx-sync"],
+      ["openspec-archive-change/SKILL.md", "opsx-archive"],
+    ];
+    for (const [file, action] of cases) {
+      const fixture = `${readFileSync(
+        join(process.cwd(), "vendor/openspec-pi-ref/skills", file),
+        "utf8",
+      )}\nUser: demo-change`;
+      expect(recognizeMetricsInput(fixture), file).toEqual({
+        action,
+        change: "demo-change",
+      });
+    }
+  });
+
+  it("requires complete structural signatures and stores no source text", () => {
+    expect(
+      recognizeMetricsInput("Enter explore mode. Think deeply. Visualize freely."),
+    ).toBeNull();
+    const recognized = recognizeMetricsInput(
+      readFileSync(
+        join(process.cwd(), "vendor/openspec-pi-ref/prompts/opsx-explore.md"),
+        "utf8",
+      ).replace("$@", "private operator prose"),
+    );
+    expect(recognized).toEqual({ action: "opsx-explore", change: null });
+    expect(JSON.stringify(recognized)).not.toContain("private operator prose");
+  });
+
   it("recognizes explicit slash and known shell actions", () => {
     expect(parseLifecycleSlash("/ops-ship demo-change")?.action).toBe("ops-ship");
     expect(parseLifecycleSlash("/ops-ship Not_Good")).toBeNull();
