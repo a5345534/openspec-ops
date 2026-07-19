@@ -472,6 +472,10 @@ Disabled by default. Collection and reports are mechanical: they do **not** call
 
 Records live under the Pi agent directory (`~/.pi/agent/openspec-ops/metrics/`, respecting `PI_CODING_AGENT_DIR`) as per-session JSONL. New records have a unique record ID and a hashed machine-local primary-repository ID; absolute workspace paths are not recorded, linked worktrees share one ID, and unresolved/legacy workspace identity stays unknown. Only metadata is stored: change/action/round, model and raw usage/cache/cost, structured review counts/verdict, and deliver outcomes/error codes. Prompt/assistant prose, source, tool inputs/results, stderr, and secrets are not persisted; nothing is uploaded.
 
+Turn attribution covers the supported full flow: `opsx-explore`, start, propose, spec review, apply, ship, implementation review, merge, `opsx-sync`, archive, and finish. It mechanically recognizes raw slash input, supported stock OpenSpec prompt/skill signatures after Pi expansion, valid metrics markers, and known workflow-boundary shell commands. Signature text is inspected only in memory and never persisted. Ordinary prose, unmarked file editing, unsupported prompt versions, and ambiguous activity remain `unknown`; no model infers a stage. Activity lasts through one agent invocation's model/tool loop and resets at `agent_settled`, so a later natural-language follow-up does not inherit stale explore context.
+
+Autonomous agent work can receive per-stage attribution when it emits a valid marker or executes a recognized boundary command, but only the extension-owned `/ops-deliver` entrypoint creates `deliver_attempt` reliability records and carries merge consent. Helper commands such as `openspec status`, `instructions`, and `validate` do not replace the active stage.
+
 ### Optional local SQLite projection
 
 JSONL remains the append-only source of truth. SQLite is never created or written by metrics enablement, model turns, ordinary reports, or package updates. On a Node runtime that provides `node:sqlite`, an operator may explicitly create/attach and synchronize a rebuildable local projection:

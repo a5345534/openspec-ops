@@ -45,6 +45,15 @@ describe("guided extension runtime handoff", () => {
     expect(source).not.toContain('deliverAs: "steer"');
   });
 
+  it("recognizes metrics activity from operator and extension follow-ups", () => {
+    const input = source.slice(
+      source.indexOf('pi.on("input"'),
+      source.indexOf('pi.on("tool_call"'),
+    );
+    expect(input).toContain("recognizeMetricsInput(event.text)");
+    expect(input).not.toContain('event.source === "extension"');
+  });
+
   it("tracks genuine operator language and injects it into every handoff", () => {
     expect(source).toContain('event.source !== "extension"');
     expect(source).toContain("inferResponseLanguage(text, responseLanguage)");
