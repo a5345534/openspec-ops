@@ -22,6 +22,8 @@ import {
 import {
   attachSubmodulesToMainIfSafe,
   defaultFinishSyncDeps,
+  preflightReturnToMain,
+  returnPrimaryAndSubmodulesToMain,
   syncPrimaryCheckout,
   syncPrimarySubmodules,
   type FinishSyncDeps,
@@ -67,15 +69,33 @@ export function runFinish(
   const remote = options.remote ?? "origin";
   const keepBranch = Boolean(options.keepBranch);
   const force = Boolean(options.force);
-  const wantSyncPrimary = Boolean(options.syncPrimary);
-  const wantSyncSubs = Boolean(options.syncSubmodules);
-  const wantAttach = Boolean(options.attachSubmoduleMain);
+  const requireReturnToMain = Boolean(options.returnToMain);
+  const wantSyncPrimary = Boolean(options.syncPrimary) || requireReturnToMain;
+  const wantSyncSubs = Boolean(options.syncSubmodules) || requireReturnToMain;
+  const wantAttach = Boolean(options.attachSubmoduleMain) || requireReturnToMain;
 
   let worktreeRemoved = false;
   let path: string | null = null;
   let dirty = false;
   let locatedBranch = branch;
   let submoduleBranchDiagnostics: FinishResult["submoduleBranchDiagnostics"] = [];
+
+  const syncDeps = deps.finishSyncDeps ?? defaultFinishSyncDeps;
+  if (requireReturnToMain) {
+    const preflight = preflightReturnToMain(ctx.primaryPath, syncDeps);
+    if (preflight.primaryDirty || preflight.submodules.length > 0) {
+      throw new CliError(
+        "return_to_main_needs_human",
+        `Cannot --return-to-main: primary or initialized submodule worktree is dirty: ${ctx.primaryPath}`,
+        {
+          primary: null,
+          submodules: preflight.submodules,
+          primaryDirty: preflight.primaryDirty,
+          worktreeRemoved: false,
+        },
+      );
+    }
+  }
 
   try {
     const loc = deps.locate(options);
@@ -220,29 +240,69 @@ export function runFinish(
     attachSubmoduleMain: wantAttach ? "failed" : "skipped",
     attached: [],
     diverged: [],
+    required: requireReturnToMain,
+    primary: null,
+    submodules: [],
   };
 
-  const syncDeps = deps.finishSyncDeps ?? defaultFinishSyncDeps;
   const syncCtx = { worktreeRemoved, remote };
 
-  // Opt-in primary closeout (after workspace closeout). Failures rethrow with worktreeRemoved detail.
-  if (wantSyncPrimary) {
-    syncPrimaryCheckout(ctx.primaryPath, syncCtx, syncDeps);
-    sync.syncPrimary = "ok";
-  }
-  if (wantSyncSubs) {
-    syncPrimarySubmodules(ctx.primaryPath, syncCtx, syncDeps);
-    sync.syncSubmodules = "ok";
-  }
-  if (wantAttach) {
-    const att = attachSubmodulesToMainIfSafe(ctx.primaryPath, {}, syncDeps);
-    sync.attached = att.attached;
-    sync.diverged = att.diverged;
-    sync.attachSubmoduleMain = att.diverged.length > 0 ? "partial" : "ok";
-    if (att.diverged.length > 0) {
-      closeoutHints.messages.push(
-        `submodule_main_diverged: ${att.diverged.join(", ")} (left at pin; no force)`,
+  // Opt-in primary closeout (after workspace closeout). Failures include worktreeRemoved detail.
+  if (requireReturnToMain) {
+    try {
+      const strict = returnPrimaryAndSubmodulesToMain(
+        ctx.primaryPath,
+        syncCtx,
+        syncDeps,
       );
+      sync.syncPrimary = "ok";
+      sync.syncSubmodules = "ok";
+      sync.attachSubmoduleMain = "ok";
+      sync.primary = strict.primary;
+      sync.submodules = strict.submodules;
+      sync.attached = strict.submodules.map((state) => state.path);
+    } catch (error) {
+      if (error instanceof CliError && error.code === "return_to_main_needs_human") {
+        throw error;
+      }
+      const cause = error instanceof CliError ? error.toBody() : {
+        message: error instanceof Error ? error.message : String(error),
+      };
+      throw new CliError(
+        "return_to_main_needs_human",
+        "Strict return-to-main could not complete safely.",
+        {
+          primary: null,
+          submodules: [],
+          worktreeRemoved,
+          cause,
+        },
+      );
+    }
+  } else {
+    if (wantSyncPrimary) {
+      const primary = syncPrimaryCheckout(ctx.primaryPath, syncCtx, syncDeps);
+      sync.syncPrimary = "ok";
+      sync.primary = {
+        branch: primary.baseBranch,
+        head: primary.head,
+        remoteHead: syncDeps.revParse(ctx.primaryPath, `${remote}/${primary.baseBranch}`),
+      };
+    }
+    if (wantSyncSubs) {
+      syncPrimarySubmodules(ctx.primaryPath, syncCtx, syncDeps);
+      sync.syncSubmodules = "ok";
+    }
+    if (wantAttach) {
+      const att = attachSubmodulesToMainIfSafe(ctx.primaryPath, {}, syncDeps);
+      sync.attached = att.attached;
+      sync.diverged = att.diverged;
+      sync.attachSubmoduleMain = att.diverged.length > 0 ? "partial" : "ok";
+      if (att.diverged.length > 0) {
+        closeoutHints.messages.push(
+          `submodule_main_diverged: ${att.diverged.join(", ")} (left at pin; no force)`,
+        );
+      }
     }
   }
 

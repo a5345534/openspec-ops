@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  FINISH_RETURN_TO_MAIN_ENV,
+  FINISH_RETURN_TO_MAIN_KEY,
   IMPL_REVIEW_MAX_ROUNDS_ENV,
   IMPL_REVIEW_MAX_ROUNDS_KEY,
   SPEC_REVIEW_MAX_ROUNDS_DEFAULT,
   SPEC_REVIEW_MAX_ROUNDS_ENV,
   SPEC_REVIEW_MAX_ROUNDS_KEY,
+  getEffectiveFinishReturnToMain,
   getEffectiveImplReviewMaxRounds,
   getEffectiveMaxRounds,
   parseMaxRoundsStrict,
@@ -79,11 +82,37 @@ describe("impl-review.max-rounds", () => {
   });
 });
 
+describe("finish.return-to-main", () => {
+  it("defaults off and resolves session > env", () => {
+    expect(getEffectiveFinishReturnToMain({})).toEqual({
+      value: "off",
+      source: "default",
+    });
+    const env = { [FINISH_RETURN_TO_MAIN_ENV]: "required" };
+    expect(getEffectiveFinishReturnToMain(env)).toEqual({
+      value: "required",
+      source: "env",
+    });
+    setSessionValue(FINISH_RETURN_TO_MAIN_KEY, "off");
+    expect(getEffectiveFinishReturnToMain(env)).toEqual({
+      value: "off",
+      source: "session",
+    });
+  });
+
+  it("rejects invalid policy values", () => {
+    expect(() => setSessionValue(FINISH_RETURN_TO_MAIN_KEY, "yes")).toThrow(
+      "off' or 'required",
+    );
+  });
+});
+
 describe("showAll", () => {
-  it("lists both round keys", () => {
+  it("lists round and closeout keys", () => {
     const rows = showAll({});
     const keys = rows.map((r) => r.key);
     expect(keys).toContain(SPEC_REVIEW_MAX_ROUNDS_KEY);
     expect(keys).toContain(IMPL_REVIEW_MAX_ROUNDS_KEY);
+    expect(keys).toContain(FINISH_RETURN_TO_MAIN_KEY);
   });
 });

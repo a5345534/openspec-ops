@@ -1,7 +1,10 @@
 import { isDirty, refExists, resolveBaseRef, revParse, runGit } from "../git.js";
 import { toBaseBranchName } from "./ship.js";
 import { probeTopLevelSubmodules } from "../submodules/probe.js";
-import { CliError } from "../types.js";
+import {
+  CliError,
+  type ReturnToMainSubmoduleState,
+} from "../types.js";
 import type { GitRunResult } from "../git.js";
 
 export type GitRunner = (
@@ -23,6 +26,11 @@ export type AttachSubmoduleResult = {
   attached: string[];
   diverged: string[];
   skipped: string[];
+};
+
+export type ReturnToMainResult = {
+  primary: { branch: string; head: string; remoteHead: string };
+  submodules: ReturnToMainSubmoduleState[];
 };
 
 export type FinishSyncDeps = {
@@ -80,6 +88,18 @@ export function syncPrimaryCheckout(
   const baseBranch = toBaseBranchName(baseResolved);
   const originBase = `${remote}/${baseBranch}`;
 
+  const fetch = deps.runGit(["fetch", "--prune", remote], {
+    cwd: primaryPath,
+    allowFailure: true,
+  });
+  if (fetch.status !== 0) {
+    throw new CliError(
+      "sync_primary_failed",
+      `Cannot --sync-primary: fetch ${remote} failed: ${fetch.stderr || fetch.stdout}`,
+      { ...detailsBase, originBase },
+    );
+  }
+
   if (!deps.refExists(primaryPath, originBase)) {
     throw new CliError(
       "sync_primary_failed",
@@ -99,15 +119,21 @@ export function syncPrimaryCheckout(
     onBase = m?.[1] === baseBranch;
   }
   if (!onBase) {
-    const sw = deps.runGit(["switch", baseBranch], {
+    let sw = deps.runGit(["switch", baseBranch], {
       cwd: primaryPath,
       allowFailure: true,
     });
+    if (sw.status !== 0 && !deps.refExists(primaryPath, `refs/heads/${baseBranch}`)) {
+      sw = deps.runGit(
+        ["switch", "-c", baseBranch, "--track", originBase],
+        { cwd: primaryPath, allowFailure: true },
+      );
+    }
     if (sw.status !== 0) {
       throw new CliError(
         "sync_primary_failed",
         `Cannot --sync-primary: failed to switch to ${baseBranch}: ${sw.stderr || sw.stdout}`,
-        { ...detailsBase, baseBranch },
+        { ...detailsBase, baseBranch, originBase },
       );
     }
   }
@@ -273,4 +299,323 @@ export function attachSubmodulesToMainIfSafe(
   }
 
   return { attached, diverged, skipped };
+}
+
+function gitText(
+  deps: FinishSyncDeps,
+  cwd: string,
+  args: string[],
+): string | null {
+  const result = deps.runGit(args, { cwd, allowFailure: true });
+  return result.status === 0 && result.stdout.trim()
+    ? result.stdout.trim()
+    : null;
+}
+
+function currentBranch(deps: FinishSyncDeps, cwd: string): string | null {
+  return gitText(deps, cwd, ["branch", "--show-current"]);
+}
+
+function submodulePaths(deps: FinishSyncDeps, cwd: string): string[] {
+  const result = deps.runGit(
+    ["config", "-z", "--file", ".gitmodules", "--get-regexp", "^submodule\\..*\\.path$"],
+    { cwd, allowFailure: true },
+  );
+  if (result.status !== 0 || !result.stdout) return [];
+  return result.stdout
+    .split("\0")
+    .map((entry) => {
+      const newline = entry.indexOf("\n");
+      return newline >= 0 ? entry.slice(newline + 1) : "";
+    })
+    .filter(Boolean);
+}
+
+type SubmoduleInventory = {
+  path: string;
+  abs: string;
+  parent: string;
+  parentPath: string;
+};
+
+function inventorySubmodules(
+  primaryPath: string,
+  deps: FinishSyncDeps,
+): SubmoduleInventory[] {
+  const rows: SubmoduleInventory[] = [];
+  const visited = new Set<string>();
+  const walk = (parent: string, prefix: string, depth: number): void => {
+    if (depth > 32) return;
+    for (const parentPath of submodulePaths(deps, parent)) {
+      const abs = `${parent}/${parentPath}`.replace(/\/+/, "/");
+      const path = prefix ? `${prefix}/${parentPath}` : parentPath;
+      const initialized = deps.runGit(
+        ["rev-parse", "--is-inside-work-tree"],
+        { cwd: abs, allowFailure: true },
+      );
+      if (initialized.status !== 0 || visited.has(abs)) continue;
+      visited.add(abs);
+      rows.push({ path, abs, parent, parentPath });
+      walk(abs, path, depth + 1);
+    }
+  };
+  walk(primaryPath, "", 0);
+  return rows;
+}
+
+function resolveSubmoduleRemote(
+  cwd: string,
+  preferred: string,
+  deps: FinishSyncDeps,
+): string | null {
+  const result = deps.runGit(["remote"], { cwd, allowFailure: true });
+  if (result.status !== 0) return null;
+  const remotes = result.stdout.split(/\s+/).map((value) => value.trim()).filter(Boolean);
+  if (remotes.includes("origin")) return "origin";
+  if (remotes.includes(preferred)) return preferred;
+  return remotes.length === 1 ? remotes[0]! : null;
+}
+
+function resolveRemoteDefault(
+  cwd: string,
+  remote: string,
+  deps: FinishSyncDeps,
+): { branch: string; ref: string } | null {
+  const refreshed = deps.runGit(["remote", "set-head", remote, "--auto"], {
+    cwd,
+    allowFailure: true,
+  });
+  if (refreshed.status !== 0) return null;
+  const symbolic = gitText(
+    deps,
+    cwd,
+    ["symbolic-ref", "--quiet", `refs/remotes/${remote}/HEAD`],
+  );
+  const prefix = `refs/remotes/${remote}/`;
+  if (!symbolic?.startsWith(prefix)) return null;
+  const branch = symbolic.slice(prefix.length);
+  return branch ? { branch, ref: `${remote}/${branch}` } : null;
+}
+
+function failureState(
+  row: SubmoduleInventory,
+  outcome: ReturnToMainSubmoduleState["attachOutcome"],
+  values: Partial<ReturnToMainSubmoduleState> = {},
+): ReturnToMainSubmoduleState {
+  return {
+    path: row.path,
+    branch: values.branch ?? null,
+    head: values.head ?? null,
+    gitlink: values.gitlink ?? null,
+    remoteDefaultBranch: values.remoteDefaultBranch ?? null,
+    attachOutcome: outcome,
+  };
+}
+
+export function preflightReturnToMain(
+  primaryPath: string,
+  deps: FinishSyncDeps = defaultFinishSyncDeps,
+): { primaryDirty: boolean; submodules: ReturnToMainSubmoduleState[] } {
+  const direct = deps.runGit(
+    ["status", "--porcelain", "--ignore-submodules=all"],
+    { cwd: primaryPath, allowFailure: true },
+  );
+  const primaryDirty = direct.status !== 0 || Boolean(direct.stdout.trim());
+  const submodules = inventorySubmodules(primaryPath, deps)
+    .filter((row) => deps.isDirty(row.abs))
+    .map((row) => failureState(row, "dirty", {
+      branch: currentBranch(deps, row.abs),
+      head: gitText(deps, row.abs, ["rev-parse", "HEAD"]),
+      gitlink: gitText(deps, row.parent, ["rev-parse", `HEAD:${row.parentPath}`]),
+    }));
+  return { primaryDirty, submodules };
+}
+
+/** Strict, recursive, non-destructive return-to-main closeout. */
+export function returnPrimaryAndSubmodulesToMain(
+  primaryPath: string,
+  options: { remote?: string; worktreeRemoved?: boolean } = {},
+  deps: FinishSyncDeps = defaultFinishSyncDeps,
+): ReturnToMainResult {
+  const remote = options.remote ?? "origin";
+  const initial = preflightReturnToMain(primaryPath, deps);
+  if (initial.primaryDirty || initial.submodules.length > 0) {
+    throw new CliError(
+      "return_to_main_needs_human",
+      "Strict return-to-main requires clean primary and initialized submodules.",
+      {
+        primary: null,
+        submodules: initial.submodules,
+        primaryDirty: initial.primaryDirty,
+        worktreeRemoved: Boolean(options.worktreeRemoved),
+      },
+    );
+  }
+  const primary = syncPrimaryCheckout(primaryPath, options, deps);
+  const remoteHead = deps.revParse(primaryPath, `${remote}/${primary.baseBranch}`);
+  if (primary.head !== remoteHead) {
+    throw new CliError(
+      "return_to_main_needs_human",
+      `Primary HEAD does not equal ${remote}/${primary.baseBranch} after ff-only sync.`,
+      {
+        primary: { branch: primary.baseBranch, head: primary.head, remoteHead },
+        submodules: [],
+        worktreeRemoved: Boolean(options.worktreeRemoved),
+      },
+    );
+  }
+
+  const preflight = preflightReturnToMain(primaryPath, deps);
+  if (preflight.primaryDirty || preflight.submodules.length > 0) {
+    throw new CliError(
+      "return_to_main_needs_human",
+      "Strict return-to-main requires clean primary and initialized submodules.",
+      {
+        primary: { branch: primary.baseBranch, head: primary.head, remoteHead },
+        submodules: preflight.submodules,
+        primaryDirty: preflight.primaryDirty,
+        worktreeRemoved: Boolean(options.worktreeRemoved),
+      },
+    );
+  }
+
+  syncPrimarySubmodules(primaryPath, options, deps);
+  const states: ReturnToMainSubmoduleState[] = [];
+  for (const row of inventorySubmodules(primaryPath, deps)) {
+    const gitlink = gitText(deps, row.parent, ["rev-parse", `HEAD:${row.parentPath}`]);
+    const head = gitText(deps, row.abs, ["rev-parse", "HEAD"]);
+    const branch = currentBranch(deps, row.abs);
+    if (!gitlink) {
+      states.push(failureState(row, "gitlink_unresolved", { head, branch }));
+      continue;
+    }
+    if (deps.isDirty(row.abs)) {
+      states.push(failureState(row, "dirty", { head, branch, gitlink }));
+      continue;
+    }
+    const submoduleRemote = resolveSubmoduleRemote(row.abs, remote, deps);
+    if (!submoduleRemote) {
+      states.push(failureState(row, "default_unresolved", { head, branch, gitlink }));
+      continue;
+    }
+    const fetch = deps.runGit(["fetch", "--prune", submoduleRemote], {
+      cwd: row.abs,
+      allowFailure: true,
+    });
+    if (fetch.status !== 0) {
+      states.push(failureState(row, "fetch_failed", { head, branch, gitlink }));
+      continue;
+    }
+    const defaultRef = resolveRemoteDefault(row.abs, submoduleRemote, deps);
+    if (!defaultRef) {
+      states.push(failureState(row, "default_unresolved", { head, branch, gitlink }));
+      continue;
+    }
+    const common = {
+      gitlink,
+      remoteDefaultBranch: defaultRef.branch,
+    };
+    const remoteTip = gitText(deps, row.abs, ["rev-parse", defaultRef.ref]);
+    if (!remoteTip) {
+      states.push(failureState(row, "default_unresolved", { head, branch, ...common }));
+      continue;
+    }
+    if (remoteTip !== gitlink) {
+      const ancestor = deps.runGit(
+        ["merge-base", "--is-ancestor", remoteTip, gitlink],
+        { cwd: row.abs, allowFailure: true },
+      );
+      if (ancestor.status !== 0) {
+        states.push(failureState(row, "incompatible_default", { head, branch, ...common }));
+        continue;
+      }
+    }
+
+    const localRef = `refs/heads/${defaultRef.branch}`;
+    const localExists = deps.refExists(row.abs, localRef);
+    if (localExists) {
+      const localTip = gitText(deps, row.abs, ["rev-parse", localRef]);
+      if (!localTip) {
+        states.push(failureState(row, "incompatible_local_branch", { head, branch, ...common }));
+        continue;
+      }
+      if (localTip !== gitlink) {
+        const ancestor = deps.runGit(
+          ["merge-base", "--is-ancestor", localTip, gitlink],
+          { cwd: row.abs, allowFailure: true },
+        );
+        if (ancestor.status !== 0) {
+          states.push(failureState(row, "incompatible_local_branch", { head, branch, ...common }));
+          continue;
+        }
+      }
+    }
+
+    const restorePin = (): { head: string | null; branch: string | null } => {
+      deps.runGit(["switch", "--detach", gitlink], {
+        cwd: row.abs,
+        allowFailure: true,
+      });
+      return {
+        head: gitText(deps, row.abs, ["rev-parse", "HEAD"]),
+        branch: currentBranch(deps, row.abs),
+      };
+    };
+    const switched = deps.runGit(
+      localExists
+        ? ["switch", defaultRef.branch]
+        : ["switch", "-c", defaultRef.branch, "--track", defaultRef.ref],
+      { cwd: row.abs, allowFailure: true },
+    );
+    if (switched.status !== 0) {
+      states.push(failureState(row, "switch_failed", { ...restorePin(), ...common }));
+      continue;
+    }
+    const afterSwitch = gitText(deps, row.abs, ["rev-parse", "HEAD"]);
+    if (afterSwitch !== gitlink) {
+      const ff = deps.runGit(["merge", "--ff-only", gitlink], {
+        cwd: row.abs,
+        allowFailure: true,
+      });
+      if (ff.status !== 0) {
+        states.push(failureState(row, "fast_forward_failed", {
+          ...restorePin(),
+          ...common,
+        }));
+        continue;
+      }
+    }
+    const finalHead = gitText(deps, row.abs, ["rev-parse", "HEAD"]);
+    const finalBranch = currentBranch(deps, row.abs);
+    if (finalHead !== gitlink || finalBranch !== defaultRef.branch) {
+      states.push(failureState(row, "verification_failed", {
+        ...restorePin(),
+        ...common,
+      }));
+      continue;
+    }
+    states.push(failureState(row, "attached", {
+      head: finalHead,
+      branch: finalBranch,
+      ...common,
+    }));
+  }
+
+  const snapshot = {
+    primary: { branch: primary.baseBranch, head: primary.head, remoteHead },
+    submodules: states,
+  };
+  const incompatible = states.filter((state) => state.attachOutcome !== "attached");
+  if (incompatible.length > 0 || deps.isDirty(primaryPath)) {
+    throw new CliError(
+      "return_to_main_needs_human",
+      "Strict return-to-main could not safely attach every initialized submodule at its parent gitlink.",
+      {
+        ...snapshot,
+        worktreeRemoved: Boolean(options.worktreeRemoved),
+        primaryDirty: deps.isDirty(primaryPath),
+      },
+    );
+  }
+  return snapshot;
 }
