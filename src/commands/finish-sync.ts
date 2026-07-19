@@ -381,16 +381,16 @@ function resolveRemoteDefault(
   remote: string,
   deps: FinishSyncDeps,
 ): { branch: string; ref: string } | null {
-  const read = (): string | null =>
-    gitText(deps, cwd, ["symbolic-ref", "--quiet", `refs/remotes/${remote}/HEAD`]);
-  let symbolic = read();
-  if (!symbolic) {
-    deps.runGit(["remote", "set-head", remote, "--auto"], {
-      cwd,
-      allowFailure: true,
-    });
-    symbolic = read();
-  }
+  const refreshed = deps.runGit(["remote", "set-head", remote, "--auto"], {
+    cwd,
+    allowFailure: true,
+  });
+  if (refreshed.status !== 0) return null;
+  const symbolic = gitText(
+    deps,
+    cwd,
+    ["symbolic-ref", "--quiet", `refs/remotes/${remote}/HEAD`],
+  );
   const prefix = `refs/remotes/${remote}/`;
   if (!symbolic?.startsWith(prefix)) return null;
   const branch = symbolic.slice(prefix.length);

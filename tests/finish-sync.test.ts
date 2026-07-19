@@ -194,7 +194,10 @@ describe("attachSubmodulesToMainIfSafe", () => {
 });
 
 describe("strict return-to-main", () => {
-  function recursiveDeps(incompatible = false): FinishSyncDeps {
+  function recursiveDeps(
+    incompatible = false,
+    calls: string[][] = [],
+  ): FinishSyncDeps {
     const pinFor = (cwd: string) => cwd.endsWith("/inner") ? "pin-inner" : "pin-outer";
     return syncDeps({
       resolveBase: () => "origin/main",
@@ -202,6 +205,7 @@ describe("strict return-to-main", () => {
       refExists: (cwd, ref) => cwd === "/repo" && ref === "origin/main",
       isDirty: () => false,
       runGit: (args, options) => {
+        calls.push(args);
         const cwd = options?.cwd ?? "";
         if (args[0] === "status") return { status: 0, stdout: "", stderr: "" };
         if (args[0] === "config") {
@@ -258,11 +262,12 @@ describe("strict return-to-main", () => {
     });
   }
 
-  it("recursively reports and attaches resolved non-main defaults", () => {
+  it("recursively reports and attaches freshly resolved non-main defaults", () => {
+    const calls: string[][] = [];
     const result = returnPrimaryAndSubmodulesToMain(
       "/repo",
       { remote: "origin", worktreeRemoved: true },
-      recursiveDeps(),
+      recursiveDeps(false, calls),
     );
     expect(result.primary).toEqual({
       branch: "main",
@@ -276,6 +281,8 @@ describe("strict return-to-main", () => {
     expect(result.submodules.every((row) =>
       row.remoteDefaultBranch === "master" && row.attachOutcome === "attached"
     )).toBe(true);
+    expect(calls).toContainEqual(["remote", "set-head", "origin", "--auto"]);
+    expect(calls).toContainEqual(["remote", "set-head", "upstream", "--auto"]);
   });
 
   it("restores the detached parent pin when ff-only attachment fails", () => {
