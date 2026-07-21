@@ -342,7 +342,7 @@ This repo ships **project-local** Pi assets that orchestrate the CLI (they do no
 | `/ops-prune` · `ops-prune` | Deprecated; prefer finish |
 | `/ops-doctor` · `ops-doctor` | `openspec-ops doctor` |
 | `/ops-spec-review` · `ops-spec-review` | Iterative plan/spec review-fix (agent-driven; edits artifacts) |
-| `/ops-config` | Session settings (e.g. `spec-review.max-rounds`; not a project file) |
+| `/ops-config` | Session/user settings + menu (e.g. `spec-review.max-rounds`; not a project file) |
 
 Typical loop in Pi:
 
@@ -400,21 +400,26 @@ Optional: symlink these skills into `~/.pi/agent/skills/` for other repos; prefe
 
 ## Pi session config (`/ops-config`)
 
-Session overrides are not project config and reset when Pi restarts. Supported environment fallbacks can provide persistent shell/automation policy.
+Not a repository project file. **Session** overrides reset when Pi restarts. **User** preferences persist under the Pi agent directory (`<agentDir>/openspec-ops/config.json`, same root as metrics). Environment variables remain for shell/automation.
+
+Empty `/ops-config` opens a guided menu when UI is available (show / edit / clear session / clear user); without UI it prints a text catalog. Explicit subcommands still work. Bare interactive default is the menu (not `show`).
 
 ```text
+/ops-config
 /ops-config show
 /ops-config set spec-review.max-rounds 5
-/ops-config set finish.return-to-main required
+/ops-config set --user finish.return-to-main required
 /ops-config get finish.return-to-main
 /ops-config unset spec-review.max-rounds
+/ops-config unset --user finish.return-to-main
 /ops-config reset
+/ops-config reset --user
 ```
 
-Precedence: **session > env > default**.  
+Precedence: **session > user > env > default**.  
 `spec-review.max-rounds` default **3** (env: `OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS`).
 `impl-review.max-rounds` default **3** (env: `OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS`).
-`finish.return-to-main` accepts `off|required`, defaults to **off**, and uses env `OPENSPEC_OPS_FINISH_RETURN_TO_MAIN`. Effective `required` makes `/ops-deliver` pass strict `--return-to-main` at final finish; effective `off` preserves the non-mutating default.
+`finish.return-to-main` accepts `off|required`, built-in default **off**, env `OPENSPEC_OPS_FINISH_RETURN_TO_MAIN`. Effective `required` makes `/ops-deliver` pass strict `--return-to-main` at final finish; effective `off` preserves the non-mutating default. The CLI `openspec-ops finish` flag default remains off and does not read the user store.
 
 ### Auto impl-review after ship
 
@@ -440,8 +445,8 @@ Extension: `.pi/extensions/openspec-ops-guided.ts` (guided lifecycle).
 - **`/ops-start`** — manual worktree only  
 - **`/ops-next [change]`** — hard-coded next-step menu (`ctx.ui.select` or text; never auto-picks)
 - **`/ops-deliver <change>`** — batch start→finish after explore (reviews required; merge consent on invoke); extension binds slash args then skill follow-up  
-- **`/ops-config`** — session review limits and return-to-main policy
-- **`/ops-metrics`** — local opt-in model/cost, review-round, and deliver-reliability metrics (no LLM/report turn)
+- **`/ops-config`** — session/user review limits and return-to-main policy (empty → menu)
+- **`/ops-metrics`** — local opt-in metrics; empty → guided menu (status/on/off/report/export/db/reset)
 
 **Removed:** auto-ensure on propose, auto-review settle fire, auto-finish, auto-impl-review after ship, intercept ensure-before-new-change.
 
@@ -461,7 +466,10 @@ Pi 0.80.7 can race while flushing compaction-queued input and reject a later pla
 
 Disabled by default. Collection and reports are mechanical: they do **not** call a model, queue a follow-up, expose a telemetry tool, or alter lifecycle gates.
 
+Empty `/ops-metrics` opens a guided menu when UI is available; without UI it prints a text catalog plus status summary (no destructive side effects). Menu paths for reset/rebuild/destroy use interactive confirm; direct `… confirm` tokens remain for scripts.
+
 ```text
+/ops-metrics                        # menu (UI) or text catalog
 /ops-metrics status
 /ops-metrics on
 /ops-metrics report [change]        # authoritative JSONL source
