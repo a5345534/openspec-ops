@@ -6,3 +6,6 @@ coverage/
 .tmp/
 .temp/
 .worktrees/
+
+# Knowledge Query Index - rebuildable cache
+knowledge/.index/
