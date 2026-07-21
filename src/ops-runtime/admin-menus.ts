@@ -56,7 +56,7 @@ export function keyFromConfigLabel(label: string): string | null {
 
 export function valueChoicesForKey(key: string): string[] | null {
   if (key === FINISH_RETURN_TO_MAIN_KEY) {
-    return ["off", "required", "Cancel"];
+    return ["off", "primary-only", "required", "Cancel"];
   }
   if (key === SPEC_REVIEW_MAX_ROUNDS_KEY || key === IMPL_REVIEW_MAX_ROUNDS_KEY) {
     return ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "Cancel"];

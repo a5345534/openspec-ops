@@ -33,7 +33,7 @@ export const IMPL_REVIEW_MAX_ROUNDS_DEFAULT = 3;
 export const FINISH_RETURN_TO_MAIN_KEY = "finish.return-to-main";
 export const FINISH_RETURN_TO_MAIN_ENV = "OPENSPEC_OPS_FINISH_RETURN_TO_MAIN";
 export const FINISH_RETURN_TO_MAIN_DEFAULT = "off" as const;
-export type FinishReturnToMainPolicy = "off" | "required";
+export type FinishReturnToMainPolicy = "off" | "primary-only" | "required";
 
 export const MAX_ROUNDS_MIN = 1;
 export const MAX_ROUNDS_MAX = 10;
@@ -154,8 +154,12 @@ export function parseFinishReturnToMainStrict(
   raw: string,
 ): FinishReturnToMainPolicy {
   const value = String(raw).trim().toLowerCase();
-  if (value === "off" || value === "required") return value;
-  throw new Error("finish.return-to-main must be 'off' or 'required'");
+  if (value === "off" || value === "primary-only" || value === "required") {
+    return value;
+  }
+  throw new Error(
+    "finish.return-to-main must be 'off', 'primary-only', or 'required'",
+  );
 }
 
 function parseFinishReturnToMainLoose(
@@ -350,6 +354,8 @@ export function formatConfigInjection(
     `For /ops-impl-review: use max rounds = ${impl.value} (source=${impl.source}).`,
     closeout.value === "required"
       ? "For /ops-deliver final finish: REQUIRED use --return-to-main; hard-stop on return_to_main_needs_human."
-      : "For /ops-deliver final finish: do not pass --return-to-main or primary sync flags unless explicitly requested.",
+      : closeout.value === "primary-only"
+        ? "For /ops-deliver final finish: REQUIRED pass --sync-primary --sync-submodules; do NOT pass --return-to-main or --attach-submodule-main solely due to finish.return-to-main=primary-only. Submodules may remain detached at parent gitlink (correct sync). Hard-stop on primary_dirty / sync_primary_failed / primary_diverged as applicable."
+        : "For /ops-deliver final finish: do not pass --return-to-main or primary sync flags unless explicitly requested.",
   ].join("\n");
 }

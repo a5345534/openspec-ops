@@ -29,7 +29,9 @@ describe("admin-menus helpers", () => {
   });
 
   it("offers policy and round choices", () => {
-    expect(valueChoicesForKey(FINISH_RETURN_TO_MAIN_KEY)).toContain("required");
+    expect(valueChoicesForKey(FINISH_RETURN_TO_MAIN_KEY)).toEqual(
+      expect.arrayContaining(["off", "primary-only", "required", "Cancel"]),
+    );
     expect(valueChoicesForKey("spec-review.max-rounds")).toContain("3");
   });
 

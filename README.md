@@ -105,6 +105,9 @@ openspec-ops finish <change> --return-to-main        # strict composite closeout
 
 `--return-to-main` requires a clean primary, fetches and ff-only synchronizes the resolved base, runs recursive submodule update, recursively resolves initialized submodule remote defaults, and attaches each only when its branch can end exactly at the immediate parent gitlink without reset/force. Success JSON reports `sync.primary` and `sync.submodules[]`. Dirty, unresolved, ahead, or diverged state returns `return_to_main_needs_human` with structured details and never auto-commits, resets, force-pushes, or discards work.
 
+**Detached @ gitlink is synchronized with parent**, not a broken state. After `--sync-submodules` or `git submodule update --init --recursive`, expect submodules detached at the commit recorded in the parent tree. Forcing `git switch <default> && git pull` inside a submodule without updating the parent gitlink diverges from parent SSOT. Pi policy `primary-only` intentionally stops after primary ff + pin update and does not attempt default-branch attach.
+
+
 Related: safe opt-in submodule **feature-branch pruning** remains a separate Phase B enhancement (issue #30); diagnostics never authorize deletion. This checklist is the **return-to-main** DoD (issue #24).
 
 ## Phase 0: workspace lifecycle CLI
@@ -408,7 +411,7 @@ Empty `/ops-config` opens a guided menu when UI is available (show / edit / clea
 /ops-config
 /ops-config show
 /ops-config set spec-review.max-rounds 5
-/ops-config set --user finish.return-to-main required
+/ops-config set --user finish.return-to-main primary-only
 /ops-config get finish.return-to-main
 /ops-config unset spec-review.max-rounds
 /ops-config unset --user finish.return-to-main
@@ -419,7 +422,12 @@ Empty `/ops-config` opens a guided menu when UI is available (show / edit / clea
 Precedence: **session > user > env > default**.  
 `spec-review.max-rounds` default **3** (env: `OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS`).
 `impl-review.max-rounds` default **3** (env: `OPENSPEC_OPS_IMPL_REVIEW_MAX_ROUNDS`).
-`finish.return-to-main` accepts `off|required`, built-in default **off**, env `OPENSPEC_OPS_FINISH_RETURN_TO_MAIN`. Effective `required` makes `/ops-deliver` pass strict `--return-to-main` at final finish; effective `off` preserves the non-mutating default. The CLI `openspec-ops finish` flag default remains off and does not read the user store.
+`finish.return-to-main` accepts `off|primary-only|required`, built-in default **off**, env `OPENSPEC_OPS_FINISH_RETURN_TO_MAIN`.
+- `off` — deliver passes no primary sync flags (non-mutating default).
+- `primary-only` — deliver passes `--sync-primary --sync-submodules` (ff primary + pin submodules at parent gitlinks; detached @ gitlink is correct monorepo sync). Does **not** require branch attach; avoids `incompatible_default` hard-stops common with `required`.
+- `required` — deliver passes strict `--return-to-main` (includes attach); hard-stop on `return_to_main_needs_human`.
+
+The CLI `openspec-ops finish` flag default remains off and does not read the user store.
 
 ### Auto impl-review after ship
 
