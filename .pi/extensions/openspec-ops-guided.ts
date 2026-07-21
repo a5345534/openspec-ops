@@ -1,7 +1,7 @@
 /**
  * openspec-ops Pi extension — guided lifecycle (no auto chain)
  *
- * - /ops-config session settings
+ * - /ops-config session + user settings (menu or direct)
  * - /ops-start manual worktree (explicit only)
  * - /ops-next station menu (ui.select or text; user choice only)
  * - /ops-deliver binds slash change name then skill follow-up (batch start→finish)
@@ -24,11 +24,28 @@ import {
   isKnownKey,
   listKnownKeys,
   resetSessionConfig,
+  resetUserPreferences,
   setSessionValue,
+  setUserValue,
   showAll,
   unsetSessionValue,
+  unsetUserValue,
   SPEC_REVIEW_MAX_ROUNDS_KEY,
 } from "../../src/pi-config/index.js";
+import {
+  configKeyLabels,
+  configRootLabels,
+  formatConfigTextCatalog,
+  formatMetricsTextCatalog,
+  keyFromConfigLabel,
+  metricsDbLabels,
+  metricsReportSourceLabels,
+  metricsRootLabels,
+  metricsScopeLabels,
+  saveWhereLabels,
+  stripUserFlag,
+  valueChoicesForKey,
+} from "../../src/ops-runtime/admin-menus.js";
 import {
   buildNextStepPlan,
   detectLifecycleStation,
@@ -317,7 +334,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async () => {
-    const configBlock = formatConfigInjection(process.env);
+    const configBlock = formatConfigInjection(process.env, metricsAgentDir);
     const languageBlock = formatResponseLanguageContract(responseLanguage);
     if (!active) {
       return {
@@ -383,18 +400,131 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("ops-config", {
     description:
-      "Session openspec-ops settings (show|get|set|unset|reset). Not a project file.",
+      "ops-config settings: menu, or show|get|set|unset|reset [--user]. Not a project file.",
     handler: async (args, ctx) => {
       const parts = (args ?? "").trim().split(/\s+/).filter(Boolean);
-      const sub = (parts[0] ?? "show").toLowerCase();
+      const resolve = (key?: string) =>
+        key
+          ? getEffectiveEntry(key, process.env, metricsAgentDir)
+          : null;
+      const showText = () => {
+        const rows = showAll(process.env, metricsAgentDir);
+        const text = rows.map((r) => `${r.key}=${r.value} (${r.source})`).join("\n");
+        ctx.ui.notify(
+          `${text || "(no keys)"}\nSession overrides reset on restart; user preferences persist under agent dir.`,
+          "info",
+        );
+      };
+
+      const runConfigMenu = async () => {
+        if (!ctx.hasUI || typeof ctx.ui.select !== "function") {
+          ctx.ui.notify(formatConfigTextCatalog(process.env, metricsAgentDir), "info");
+          return;
+        }
+        const root = await ctx.ui.select(
+          "ops-config",
+          configRootLabels(showAll(process.env, metricsAgentDir)),
+        );
+        if (!root || root === "Cancel") {
+          ctx.ui.notify("Stopped. No config changes.", "info");
+          return;
+        }
+        if (root === "Show all") {
+          showText();
+          return;
+        }
+        if (root === "Clear session overrides") {
+          resetSessionConfig();
+          ctx.ui.notify("Cleared all session overrides.", "info");
+          return;
+        }
+        if (root.startsWith("Clear user preferences")) {
+          const ok =
+            typeof ctx.ui.confirm === "function"
+              ? await ctx.ui.confirm(
+                  "Clear user preferences?",
+                  "Removes agent-local ops-config preferences. Metrics data is kept.",
+                )
+              : false;
+          if (!ok) {
+            ctx.ui.notify("User preferences not cleared.", "info");
+            return;
+          }
+          resetUserPreferences(metricsAgentDir);
+          ctx.ui.notify("Cleared user ops-config preferences.", "info");
+          return;
+        }
+        if (root.startsWith("Edit")) {
+          const rows = showAll(process.env, metricsAgentDir);
+          const picked = await ctx.ui.select("Pick setting", [
+            ...configKeyLabels(rows),
+            "Cancel",
+          ]);
+          if (!picked || picked === "Cancel") {
+            ctx.ui.notify("Stopped. No config changes.", "info");
+            return;
+          }
+          const key = keyFromConfigLabel(picked);
+          if (!key) {
+            ctx.ui.notify("Unknown setting.", "warning");
+            return;
+          }
+          const choices = valueChoicesForKey(key);
+          let value: string | undefined;
+          if (choices) {
+            const selected = await ctx.ui.select(`Value for ${key}`, choices);
+            if (!selected || selected === "Cancel") {
+              ctx.ui.notify("Stopped. No config changes.", "info");
+              return;
+            }
+            value = selected;
+          } else if (typeof ctx.ui.input === "function") {
+            value = await ctx.ui.input(`Value for ${key}`);
+          }
+          if (value == null || String(value).trim() === "") {
+            ctx.ui.notify("Stopped. No value provided.", "info");
+            return;
+          }
+          const where = await ctx.ui.select("Save where?", saveWhereLabels());
+          if (!where || where === "Cancel") {
+            ctx.ui.notify("Stopped. No config changes.", "info");
+            return;
+          }
+          if (where.startsWith("User default")) {
+            if (
+              key === "finish.return-to-main" &&
+              value === "required" &&
+              typeof ctx.ui.confirm === "function"
+            ) {
+              const ok = await ctx.ui.confirm(
+                "Persist finish.return-to-main=required?",
+                "Deliver/finish will require --return-to-main until you change this user preference.",
+              );
+              if (!ok) {
+                ctx.ui.notify("User preference not saved.", "info");
+                return;
+              }
+            }
+            setUserValue(metricsAgentDir, key, value);
+            const e = resolve(key)!;
+            ctx.ui.notify(`Set ${e.key}=${e.value} (user)`, "info");
+            return;
+          }
+          setSessionValue(key, value);
+          const e = resolve(key)!;
+          ctx.ui.notify(`Set ${e.key}=${e.value} (session)`, "info");
+          return;
+        }
+      };
+
       try {
+        if (parts.length === 0) {
+          await runConfigMenu();
+          return;
+        }
+        const sub = parts[0]!.toLowerCase();
         if (sub === "show" || sub === "list") {
-          const rows = showAll(process.env);
-          const text = rows.map((r) => `${r.key}=${r.value} (${r.source})`).join("\n");
-          ctx.ui.notify(
-            text || "(no keys)\nSession-only; resets when Pi restarts.",
-            "info",
-          );
+          showText();
           return;
         }
         if (sub === "get") {
@@ -407,41 +537,71 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify(`Unknown key. Known: ${listKnownKeys().join(", ")}`, "warning");
             return;
           }
-          const e = getEffectiveEntry(key, process.env);
+          const e = resolve(key)!;
           ctx.ui.notify(`${e.key}=${e.value} (source=${e.source})`, "info");
           return;
         }
         if (sub === "set") {
-          const key = parts[1];
-          const value = parts.slice(2).join(" ");
+          const { user, rest } = stripUserFlag(parts.slice(1));
+          const key = rest[0];
+          const value = rest.slice(1).join(" ");
           if (!key || !value) {
-            ctx.ui.notify("Usage: /ops-config set <key> <value>", "warning");
+            ctx.ui.notify(
+              "Usage: /ops-config set [--user] <key> <value>",
+              "warning",
+            );
             return;
           }
-          setSessionValue(key, value);
-          const e = getEffectiveEntry(key, process.env);
-          ctx.ui.notify(`Set ${e.key}=${e.value} (session)`, "info");
+          if (user) {
+            setUserValue(metricsAgentDir, key, value);
+            const e = resolve(key)!;
+            ctx.ui.notify(`Set ${e.key}=${e.value} (user)`, "info");
+          } else {
+            setSessionValue(key, value);
+            const e = resolve(key)!;
+            ctx.ui.notify(`Set ${e.key}=${e.value} (session)`, "info");
+          }
           return;
         }
         if (sub === "unset") {
-          const key = parts[1];
-          if (!key) {
-            ctx.ui.notify("Usage: /ops-config unset <key>", "warning");
+          const { user, rest } = stripUserFlag(parts.slice(1));
+          const key = rest[0];
+          if (!key || rest.length !== 1) {
+            ctx.ui.notify("Usage: /ops-config unset [--user] <key>", "warning");
             return;
           }
-          unsetSessionValue(key);
-          const e = getEffectiveEntry(key, process.env);
-          ctx.ui.notify(`Unset session ${key}; now ${e.value} (${e.source})`, "info");
+          if (user) {
+            unsetUserValue(metricsAgentDir, key);
+            const e = resolve(key)!;
+            ctx.ui.notify(`Unset user ${key}; now ${e.value} (${e.source})`, "info");
+          } else {
+            unsetSessionValue(key);
+            const e = resolve(key)!;
+            ctx.ui.notify(`Unset session ${key}; now ${e.value} (${e.source})`, "info");
+          }
           return;
         }
         if (sub === "reset") {
-          resetSessionConfig();
-          ctx.ui.notify("Cleared all session overrides (env/defaults apply).", "info");
+          const { user, rest } = stripUserFlag(parts.slice(1));
+          if (rest.length > 0) {
+            ctx.ui.notify("Usage: /ops-config reset [--user]", "warning");
+            return;
+          }
+          if (user) {
+            resetUserPreferences(metricsAgentDir);
+            ctx.ui.notify("Cleared user ops-config preferences.", "info");
+          } else {
+            resetSessionConfig();
+            ctx.ui.notify(
+              "Cleared all session overrides (user/env/defaults still apply).",
+              "info",
+            );
+          }
           return;
         }
         ctx.ui.notify(
-          "Usage: /ops-config show|get <key>|set <key> <value>|unset <key>|reset\n" +
-            `Keys: ${listKnownKeys().join(", ")} (e.g. ${SPEC_REVIEW_MAX_ROUNDS_KEY})`,
+          "Usage: /ops-config [show|get|set|unset|reset] (optional --user on set/unset/reset)\n" +
+            `Empty args open a menu when UI is available. Keys: ${listKnownKeys().join(", ")} (e.g. ${SPEC_REVIEW_MAX_ROUNDS_KEY})`,
           "warning",
         );
       } catch (err) {
@@ -452,12 +612,291 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("ops-metrics", {
     description:
-      "Local opt-in metrics plus optional SQLite projection: status|on|off|report|export|reset|db.",
+      "Local metrics menu or status|on|off|report|export|reset|db (optional SQLite projection).",
     handler: async (args, ctx) => {
       const raw = (args ?? "").trim();
       const parts = raw.split(/\s+/).filter(Boolean);
-      const sub = (parts[0] ?? "status").toLowerCase();
+
+      const notifyStatus = async () => {
+        const data = readMetricsRecords(metricsAgentDir);
+        const sqlite = await getMetricsSqliteStatus(metricsAgentDir);
+        ctx.ui.notify(
+          [
+            `Lifecycle metrics: ${metricsEnabled ? "enabled" : "disabled"}`,
+            `Local root: ${metricsAgentDir}`,
+            `Records: ${data.records.length}; files: ${data.files}; legacy: ${data.legacyRecords}; malformed skipped: ${data.malformedLines}`,
+            `SQLite: ${sqlite.configured ? sqlite.path : "not configured"} (${sqlite.available ? "available" : "unavailable"})`,
+            "No prompt/source/tool content is collected; no network telemetry.",
+          ].join("\n"),
+          "info",
+        );
+      };
+
+      const runReport = async (source: "jsonl" | "sqlite", change?: string | null) => {
+        if (source === "sqlite") {
+          const data = await readMetricsSqlite(metricsAgentDir);
+          ctx.ui.notify(
+            formatMetricsReport(
+              buildMetricsReport(data.records, {
+                ...(change ? { change } : {}),
+                malformedLines: data.malformedLines,
+                source: "sqlite",
+                projection: {
+                  rows: data.rows,
+                  lastSyncAt: data.lastSyncAt,
+                },
+              }),
+            ),
+            "info",
+          );
+          return;
+        }
+        const data = readMetricsRecords(metricsAgentDir);
+        ctx.ui.notify(
+          formatMetricsReport(
+            buildMetricsReport(data.records, {
+              ...(change ? { change } : {}),
+              malformedLines: data.malformedLines,
+            }),
+          ),
+          "info",
+        );
+      };
+
+      const runExport = (change?: string | null) => {
+        const data = readMetricsRecords(metricsAgentDir);
+        const records = change
+          ? data.records.filter((record) => record.change === change)
+          : data.records;
+        ctx.ui.notify(
+          JSON.stringify(
+            {
+              schemaVersion: 1,
+              change: change ?? null,
+              malformedLines: data.malformedLines,
+              records,
+            },
+            null,
+            2,
+          ),
+          "info",
+        );
+      };
+
+      const confirmUi = async (title: string, detail: string): Promise<boolean> => {
+        if (typeof ctx.ui.confirm !== "function") return false;
+        return Boolean(await ctx.ui.confirm(title, detail));
+      };
+
+      const askChange = async (): Promise<string | null | undefined> => {
+        if (typeof ctx.ui.input !== "function") return null;
+        const rawChange = await ctx.ui.input("Change name (kebab-case)");
+        if (rawChange == null || String(rawChange).trim() === "") return null;
+        const change = firstKebab(String(rawChange).trim());
+        return change ?? undefined;
+      };
+
+      const runMetricsMenu = async () => {
+        if (!ctx.hasUI || typeof ctx.ui.select !== "function") {
+          ctx.ui.notify(formatMetricsTextCatalog(metricsEnabled), "info");
+          await notifyStatus();
+          return;
+        }
+        const root = await ctx.ui.select(
+          "ops-metrics",
+          metricsRootLabels(metricsEnabled),
+        );
+        if (!root || root === "Cancel") {
+          ctx.ui.notify("Stopped. No metrics changes.", "info");
+          return;
+        }
+        if (root === "Status") {
+          await notifyStatus();
+          return;
+        }
+        if (root.startsWith("Enable")) {
+          setMetricsEnabled(metricsAgentDir, true);
+          metricsEnabled = true;
+          ensureMetrics(ctx);
+          ctx.ui.notify(
+            `Lifecycle metrics enabled (local only): ${metricsAgentDir}`,
+            "info",
+          );
+          return;
+        }
+        if (root.startsWith("Disable")) {
+          setMetricsEnabled(metricsAgentDir, false);
+          metricsEnabled = false;
+          ctx.ui.notify("Lifecycle metrics disabled. Existing local data kept.", "info");
+          return;
+        }
+        if (root.startsWith("Report")) {
+          const sourceLabel = await ctx.ui.select(
+            "Report source",
+            metricsReportSourceLabels(),
+          );
+          if (!sourceLabel || sourceLabel === "Cancel") {
+            ctx.ui.notify("Stopped. No report.", "info");
+            return;
+          }
+          const source = sourceLabel.startsWith("SQLite") ? "sqlite" : "jsonl";
+          const scope = await ctx.ui.select("Report scope", metricsScopeLabels());
+          if (!scope || scope === "Cancel") {
+            ctx.ui.notify("Stopped. No report.", "info");
+            return;
+          }
+          let change: string | null = null;
+          if (scope.startsWith("One change")) {
+            const asked = await askChange();
+            if (asked === undefined) {
+              ctx.ui.notify("Invalid change name.", "warning");
+              return;
+            }
+            if (asked === null) {
+              ctx.ui.notify("Stopped. No report.", "info");
+              return;
+            }
+            change = asked;
+          }
+          await runReport(source, change);
+          return;
+        }
+        if (root.startsWith("Export")) {
+          const scope = await ctx.ui.select("Export scope", metricsScopeLabels());
+          if (!scope || scope === "Cancel") {
+            ctx.ui.notify("Stopped. No export.", "info");
+            return;
+          }
+          let change: string | null = null;
+          if (scope.startsWith("One change")) {
+            const asked = await askChange();
+            if (asked === undefined) {
+              ctx.ui.notify("Invalid change name.", "warning");
+              return;
+            }
+            if (asked === null) {
+              ctx.ui.notify("Stopped. No export.", "info");
+              return;
+            }
+            change = asked;
+          }
+          runExport(change);
+          return;
+        }
+        if (root.startsWith("Reset JSONL")) {
+          const ok = await confirmUi(
+            "Reset JSONL metrics?",
+            "Deletes local JSONL lifecycle metrics records only. SQLite is untouched.",
+          );
+          if (!ok) {
+            ctx.ui.notify("JSONL not reset.", "info");
+            return;
+          }
+          resetMetricsData(metricsAgentDir);
+          metricsRuntime = null;
+          pendingShell.clear();
+          ensureMetrics(ctx);
+          ctx.ui.notify("Local JSONL lifecycle metrics records deleted; SQLite untouched.", "info");
+          return;
+        }
+        if (root.startsWith("Database")) {
+          const dbChoice = await ctx.ui.select("Database", metricsDbLabels());
+          if (!dbChoice || dbChoice === "Cancel") {
+            ctx.ui.notify("Stopped. No database changes.", "info");
+            return;
+          }
+          if (dbChoice === "Status") {
+            ctx.ui.notify(
+              formatSqliteStatus(await getMetricsSqliteStatus(metricsAgentDir)),
+              "info",
+            );
+            return;
+          }
+          if (dbChoice === "Init default path") {
+            const status = await initMetricsSqlite(metricsAgentDir);
+            ctx.ui.notify(
+              `SQLite projection initialized/attached without syncing.\n${formatSqliteStatus(status)}\nRun: /ops-metrics db sync`,
+              "info",
+            );
+            return;
+          }
+          if (dbChoice.startsWith("Init custom")) {
+            if (typeof ctx.ui.input !== "function") {
+              ctx.ui.notify("Usage: /ops-metrics db init <absolute-local-path>", "warning");
+              return;
+            }
+            const path = unquotePath(await ctx.ui.input("Absolute SQLite path"));
+            if (!path) {
+              ctx.ui.notify("Stopped. No path provided.", "info");
+              return;
+            }
+            const status = await initMetricsSqlite(metricsAgentDir, path);
+            ctx.ui.notify(
+              `SQLite projection initialized/attached without syncing.\n${formatSqliteStatus(status)}\nRun: /ops-metrics db sync`,
+              "info",
+            );
+            return;
+          }
+          if (dbChoice.startsWith("Sync")) {
+            ctx.ui.notify(
+              formatSqliteSync(await syncMetricsSqlite(metricsAgentDir)),
+              "info",
+            );
+            return;
+          }
+          if (dbChoice.startsWith("Rebuild")) {
+            const ok = await confirmUi(
+              "Rebuild SQLite projection?",
+              "Clears only the SQLite projection, then re-ingests retained JSONL.",
+            );
+            if (!ok) {
+              ctx.ui.notify("SQLite not rebuilt.", "info");
+              return;
+            }
+            ctx.ui.notify(
+              formatSqliteSync(
+                await rebuildMetricsSqlite(metricsAgentDir, true),
+                "rebuilt",
+              ),
+              "info",
+            );
+            return;
+          }
+          if (dbChoice.startsWith("Detach")) {
+            const path = detachMetricsSqlite(metricsAgentDir);
+            ctx.ui.notify(
+              path
+                ? `SQLite projection detached; database kept: ${path}`
+                : "No SQLite projection was configured.",
+              "info",
+            );
+            return;
+          }
+          if (dbChoice.startsWith("Destroy")) {
+            const ok = await confirmUi(
+              "Destroy SQLite projection?",
+              "Deletes only the compatible configured SQLite database. JSONL is kept.",
+            );
+            if (!ok) {
+              ctx.ui.notify("SQLite not destroyed.", "info");
+              return;
+            }
+            const result = await destroyMetricsSqlite(metricsAgentDir, true);
+            ctx.ui.notify(
+              `${result.deleted ? "Deleted" : "Detached missing"} SQLite projection: ${result.path}. JSONL kept.`,
+              "info",
+            );
+            return;
+          }
+        }
+      };
+
       try {
+        if (parts.length === 0) {
+          await runMetricsMenu();
+          return;
+        }
+        const sub = parts[0]!.toLowerCase();
         if (sub === "on") {
           setMetricsEnabled(metricsAgentDir, true);
           metricsEnabled = true;
@@ -475,18 +914,7 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         if (sub === "status") {
-          const data = readMetricsRecords(metricsAgentDir);
-          const sqlite = await getMetricsSqliteStatus(metricsAgentDir);
-          ctx.ui.notify(
-            [
-              `Lifecycle metrics: ${metricsEnabled ? "enabled" : "disabled"}`,
-              `Local root: ${metricsAgentDir}`,
-              `Records: ${data.records.length}; files: ${data.files}; legacy: ${data.legacyRecords}; malformed skipped: ${data.malformedLines}`,
-              `SQLite: ${sqlite.configured ? sqlite.path : "not configured"} (${sqlite.available ? "available" : "unavailable"})`,
-              "No prompt/source/tool content is collected; no network telemetry.",
-            ].join("\n"),
-            "info",
-          );
+          await notifyStatus();
           return;
         }
         if (sub === "db") {
@@ -585,21 +1013,7 @@ export default function (pi: ExtensionAPI) {
               );
               return;
             }
-            const data = await readMetricsSqlite(metricsAgentDir);
-            ctx.ui.notify(
-              formatMetricsReport(
-                buildMetricsReport(data.records, {
-                  ...(change ? { change } : {}),
-                  malformedLines: data.malformedLines,
-                  source: "sqlite",
-                  projection: {
-                    rows: data.rows,
-                    lastSyncAt: data.lastSyncAt,
-                  },
-                }),
-              ),
-              "info",
-            );
+            await runReport("sqlite", change);
             return;
           }
           const change = firstKebab(parts[1]);
@@ -607,16 +1021,7 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify("Usage: /ops-metrics report [kebab-change]", "warning");
             return;
           }
-          const data = readMetricsRecords(metricsAgentDir);
-          ctx.ui.notify(
-            formatMetricsReport(
-              buildMetricsReport(data.records, {
-                ...(change ? { change } : {}),
-                malformedLines: data.malformedLines,
-              }),
-            ),
-            "info",
-          );
+          await runReport("jsonl", change);
           return;
         }
         if (sub === "export") {
@@ -625,23 +1030,7 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify("Usage: /ops-metrics export [kebab-change]", "warning");
             return;
           }
-          const data = readMetricsRecords(metricsAgentDir);
-          const records = change
-            ? data.records.filter((record) => record.change === change)
-            : data.records;
-          ctx.ui.notify(
-            JSON.stringify(
-              {
-                schemaVersion: 1,
-                change: change ?? null,
-                malformedLines: data.malformedLines,
-                records,
-              },
-              null,
-              2,
-            ),
-            "info",
-          );
+          runExport(change);
           return;
         }
         if (sub === "reset") {
@@ -660,7 +1049,7 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         ctx.ui.notify(
-          "Usage: /ops-metrics status|on|off|report [change]|report --source sqlite [change]|export [change]|reset confirm|db …",
+          "Usage: /ops-metrics (menu) | status|on|off|report [change]|report --source sqlite [change]|export [change]|reset confirm|db …",
           "warning",
         );
       } catch (error) {
