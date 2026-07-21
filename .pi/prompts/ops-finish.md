@@ -82,6 +82,7 @@ Failure:
 - Change name from `$@` (required).
 - Optional: `--path`, `--branch`, `--repo` if user requested.
 - `--return-to-main` when the operator requests strict local closeout or effective injected config states `finish.return-to-main=required`.
+- `--sync-primary --sync-submodules` when effective injected config states `finish.return-to-main=primary-only` (do not also pass `--return-to-main` solely for that policy).
 - `--force` **only** after explicit user consent in this turn when dirty.
 
 ## Steps
@@ -138,7 +139,7 @@ Failure:
 
 ## Return-to-main policy
 
-Effective `finish.return-to-main=off` preserves the non-mutating default. Effective `required` maps to the single composite `--return-to-main` flag, which requires a clean primary, fetches and ff-only synchronizes its base, recursively updates submodule pins, resolves each initialized submodule remote default, and attaches only when the branch can end exactly at the parent gitlink without reset/force. Success JSON includes `sync.primary` and `sync.submodules`; incompatibility returns `return_to_main_needs_human`.
+Effective `finish.return-to-main=off` preserves the non-mutating default. Effective `primary-only` maps to `--sync-primary --sync-submodules`: clean primary, ff-only to base, recursive submodule update to parent gitlinks (detached @ gitlink is correct sync; do not force-checkout default branch tips). Effective `required` maps to the single composite `--return-to-main` flag, which additionally resolves each initialized submodule remote default and attaches only when the branch can end exactly at the parent gitlink without reset/force. Success JSON includes `sync.primary` and `sync.submodules`; strict attach incompatibility returns `return_to_main_needs_human`.
 
 ## Guardrails
 

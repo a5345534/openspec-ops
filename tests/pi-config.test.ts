@@ -10,9 +10,11 @@ import {
   SPEC_REVIEW_MAX_ROUNDS_DEFAULT,
   SPEC_REVIEW_MAX_ROUNDS_ENV,
   SPEC_REVIEW_MAX_ROUNDS_KEY,
+  formatConfigInjection,
   getEffectiveFinishReturnToMain,
   getEffectiveImplReviewMaxRounds,
   getEffectiveMaxRounds,
+  parseFinishReturnToMainStrict,
   parseMaxRoundsStrict,
   resetSessionConfig,
   resetUserPreferences,
@@ -178,9 +180,22 @@ describe("finish.return-to-main", () => {
     expect(getEffectiveFinishReturnToMain({}, dir).source).toBe("default");
   });
 
+  it("accepts primary-only and injects flag guidance", () => {
+    expect(parseFinishReturnToMainStrict("primary-only")).toBe("primary-only");
+    const dir = agentDir();
+    setUserValue(dir, FINISH_RETURN_TO_MAIN_KEY, "primary-only");
+    expect(getEffectiveFinishReturnToMain({}, dir)).toEqual({
+      value: "primary-only",
+      source: "user",
+    });
+    const text = formatConfigInjection({}, dir);
+    expect(text).toContain("--sync-primary --sync-submodules");
+    expect(text).toContain("do NOT pass --return-to-main");
+  });
+
   it("rejects invalid policy values", () => {
     expect(() => setSessionValue(FINISH_RETURN_TO_MAIN_KEY, "yes")).toThrow(
-      "off' or 'required",
+      "primary-only",
     );
     const dir = agentDir();
     expect(() => setUserValue(dir, FINISH_RETURN_TO_MAIN_KEY, "yes")).toThrow();

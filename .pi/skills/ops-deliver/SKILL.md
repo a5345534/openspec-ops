@@ -106,7 +106,10 @@ Use action ids from the table (`ops-start`, `opsx-propose`, `ops-spec-review`, `
         - `already_merged` → OK, continue.  
         - `checks_failed` / other errors → **STOP**.  
       - **finish:** never pass `--force`. Dirty → **STOP**.  
-        Read the injected effective `finish.return-to-main` policy. When it is `required`, pass the single strict `--return-to-main` flag and hard-stop on `return_to_main_needs_human`, reporting its structured primary/submodule diagnostics. When it is `off`, do **not** pass `--return-to-main`, `--sync-primary`, `--sync-submodules`, or `--attach-submodule-main` unless the operator explicitly opts in.
+        Read the injected effective `finish.return-to-main` policy.
+        - `required`: pass the single strict `--return-to-main` flag and hard-stop on `return_to_main_needs_human`, reporting its structured primary/submodule diagnostics.
+        - `primary-only`: pass `--sync-primary --sync-submodules` only (ff primary + recursive submodule pin update). Do **not** pass `--return-to-main` or `--attach-submodule-main` solely due to this policy. Detached submodule checkouts at parent gitlink are the expected sync state. Hard-stop on primary dirty/diverged/sync failures.
+        - `off`: do **not** pass `--return-to-main`, `--sync-primary`, `--sync-submodules`, or `--attach-submodule-main` unless the operator explicitly opts in.
    g. Continue loop (resume-friendly).
 3. On stop: print station, last action, how to `/ops-deliver` again or `/ops-next`.
 
@@ -114,7 +117,7 @@ Use action ids from the table (`ops-start`, `opsx-propose`, `ops-spec-review`, `
 
 Completing deliver through **finish** means the change worktree closeout path succeeded (and PR merge/archive as applicable). It does **not** mean the operator’s **primary** checkout already matches `origin/<base>` or that submodules are on branch `main`.
 
-Primary lagging `origin/main` alone is **not** a failed deliver when sync was not requested. With effective `finish.return-to-main=required`, lifecycle success additionally requires strict primary/submodule closeout; `return_to_main_needs_human` is a hard stop, not completion. After success, operators (or opt-in finish flags) may:
+Primary lagging `origin/main` alone is **not** a failed deliver when sync was not requested. With effective `finish.return-to-main=required`, lifecycle success additionally requires strict primary/submodule closeout (including attach); `return_to_main_needs_human` is a hard stop, not completion. With `primary-only`, deliver requires primary ff sync and submodule pin update without branch attach. After success, operators (or opt-in finish flags) may:
 
 ```bash
 cd <primary> && git switch main && git pull --ff-only origin main
@@ -134,7 +137,7 @@ Or: `openspec-ops finish <change> --sync-primary [--sync-submodules] [--attach-s
 
 - Do not run explore inside deliver.  
 - Do not auto `--force` finish.  
-- Do not enable primary sync flags on finish unless the operator explicitly opts in or effective `finish.return-to-main=required`; that policy maps only to strict `--return-to-main`.
+- Do not enable primary sync flags on finish unless the operator explicitly opts in or effective policy requires them: `required` → `--return-to-main` only; `primary-only` → `--sync-primary --sync-submodules` only; `off` → none.
 - Do not bypass merge checks.  
 - Do not remove `/ops-next`.  
 - Prefer worktree path from `where` for all OpenSpec writes after start.
