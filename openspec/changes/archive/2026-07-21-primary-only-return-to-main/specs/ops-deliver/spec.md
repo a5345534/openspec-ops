@@ -21,7 +21,7 @@ When the effective policy is `required`, deliver SHALL pass the strict composite
 - **THEN** it invokes finish with `--return-to-main`
 - **AND** it does not report lifecycle completion unless strict closeout succeeds
 
-#### Scenario: return-to-main hard-stop ends deliver
+#### Scenario: strict closeout needs human
 - **WHEN** configured deliver receives `return_to_main_needs_human` from finish
 - **THEN** deliver hard-stops with the structured primary/submodule diagnostics
 - **AND** it does not force, retry destructively, or claim local return-to-main success
