@@ -1,9 +1,51 @@
-# ops-config Specification
+## ADDED Requirements
 
-## Purpose
+### Requirement: User-local preference store
+The system SHALL support a user-local preference store for known ops-config keys under the Pi agent directory (not in the repository). User preferences MUST persist across Pi process restarts. The store MUST NOT be required for normal lifecycle operation when absent. Invalid or unknown keys in the file MUST be ignored without failing lifecycle actions.
 
-Pi session configuration for openspec-ops via /ops-config (no project config files).
-## Requirements
+#### Scenario: user preference survives restart boundary
+- **WHEN** a user preference sets `finish.return-to-main` to `required`
+- **AND** no session override exists
+- **THEN** a new Pi session that loads the same agent directory reports effective `required` with source `user`
+
+#### Scenario: missing user file is inert
+- **WHEN** no user preference file exists
+- **THEN** effective resolution uses session, env, and default only
+- **AND** lifecycle commands still run
+
+### Requirement: Explicit user write and clear
+ops-config SHALL provide a direct way to write and remove user preferences for known keys (for example `set --user` / `unset --user`) without creating a project config file. Clearing all user preferences SHALL be available and MUST NOT delete metrics JSONL or SQLite data.
+
+#### Scenario: set user preference via direct command
+- **WHEN** the operator sets `finish.return-to-main` to `required` in the user store via the documented direct command form
+- **THEN** the effective value is `required` with source `user` when no session override exists
+
+#### Scenario: unset user preference
+- **WHEN** a user preference for a key is unset
+- **AND** no session override exists
+- **THEN** effective resolution falls back to env (if set) or default
+
+#### Scenario: clear user does not touch metrics
+- **WHEN** the operator clears user ops-config preferences
+- **THEN** metrics collection files and SQLite projections are left intact
+
+### Requirement: Config menu can edit session or user scope
+When the config guided menu is used to change a known key, the operator SHALL be able to choose whether the value applies to the **current session only** or to the **user preference store**. Session-only writes MUST NOT update the user store. User writes MUST persist as specified for the user store.
+
+#### Scenario: menu saves session only
+- **WHEN** the operator edits `spec-review.max-rounds` via the config menu
+- **AND** chooses session-only save
+- **THEN** the effective value uses source `session`
+- **AND** the user preference store is unchanged for that key
+
+#### Scenario: menu saves user default
+- **WHEN** the operator edits `finish.return-to-main` to `required` via the config menu
+- **AND** chooses user-default save
+- **THEN** the user store contains `required` for that key
+- **AND** with no session override the effective source is `user`
+
+## MODIFIED Requirements
+
 ### Requirement: Pi ops-config command for session settings
 The Pi extension surface SHALL provide an `ops-config` command (slash `/ops-config`) to show, get, set, unset, and reset openspec-ops settings for the **current Pi session**, and to manage optional **user-local** preferences for known keys.
 
@@ -49,15 +91,6 @@ Environment keys remain as documented (`OPENSPEC_OPS_SPEC_REVIEW_MAX_ROUNDS`, `O
 - **WHEN** no session or user value exists for a key with env support
 - **AND** a valid env value is set
 - **THEN** effective resolution uses source `env`
-
-### Requirement: Known key for spec-review max rounds
-ops-config SHALL support the key `spec-review.max-rounds` as a positive integer (implementation MAY clamp to a safe maximum such as 10).
-
-#### Scenario: invalid value rejected or clamped
-- **WHEN** the user sets `spec-review.max-rounds` to a non-positive or non-integer value
-- **THEN** the command fails validation or refuses to store an unsafe value
-
----
 
 ### Requirement: Session-only persistence in v1
 ops-config MUST document that **session** overrides are process-scoped and are not guaranteed to persist after the Pi process restarts, that **user** preferences persist under the Pi agent directory, and that ops-config MUST NOT use a repository project config file.
@@ -112,48 +145,3 @@ The built-in default MUST remain `off` (non-mutating primary). User or session `
 #### Scenario: default remains non-mutating
 - **WHEN** neither session, user preference, nor environment configures the policy
 - **THEN** the effective value is `off` with source `default`
-
-### Requirement: User-local preference store
-The system SHALL support a user-local preference store for known ops-config keys under the Pi agent directory (not in the repository). User preferences MUST persist across Pi process restarts. The store MUST NOT be required for normal lifecycle operation when absent. Invalid or unknown keys in the file MUST be ignored without failing lifecycle actions.
-
-#### Scenario: user preference survives restart boundary
-- **WHEN** a user preference sets `finish.return-to-main` to `required`
-- **AND** no session override exists
-- **THEN** a new Pi session that loads the same agent directory reports effective `required` with source `user`
-
-#### Scenario: missing user file is inert
-- **WHEN** no user preference file exists
-- **THEN** effective resolution uses session, env, and default only
-- **AND** lifecycle commands still run
-
-### Requirement: Explicit user write and clear
-ops-config SHALL provide a direct way to write and remove user preferences for known keys (for example `set --user` / `unset --user`) without creating a project config file. Clearing all user preferences SHALL be available and MUST NOT delete metrics JSONL or SQLite data.
-
-#### Scenario: set user preference via direct command
-- **WHEN** the operator sets `finish.return-to-main` to `required` in the user store via the documented direct command form
-- **THEN** the effective value is `required` with source `user` when no session override exists
-
-#### Scenario: unset user preference
-- **WHEN** a user preference for a key is unset
-- **AND** no session override exists
-- **THEN** effective resolution falls back to env (if set) or default
-
-#### Scenario: clear user does not touch metrics
-- **WHEN** the operator clears user ops-config preferences
-- **THEN** metrics collection files and SQLite projections are left intact
-
-### Requirement: Config menu can edit session or user scope
-When the config guided menu is used to change a known key, the operator SHALL be able to choose whether the value applies to the **current session only** or to the **user preference store**. Session-only writes MUST NOT update the user store. User writes MUST persist as specified for the user store.
-
-#### Scenario: menu saves session only
-- **WHEN** the operator edits `spec-review.max-rounds` via the config menu
-- **AND** chooses session-only save
-- **THEN** the effective value uses source `session`
-- **AND** the user preference store is unchanged for that key
-
-#### Scenario: menu saves user default
-- **WHEN** the operator edits `finish.return-to-main` to `required` via the config menu
-- **AND** chooses user-default save
-- **THEN** the user store contains `required` for that key
-- **AND** with no session override the effective source is `user`
-
