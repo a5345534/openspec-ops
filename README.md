@@ -70,7 +70,9 @@ Recommended order when you implement inside a submodule:
 `openspec-ops doctor` reports `submodule_detached` (info) and `submodule_detached_dirty` (warning).  
 Dirty `finish` messages mention submodule risk; openspec-ops never auto-commits submodules.
 
-**Finish + submodules:** before `git worktree remove`, finish records read-only diagnostics for checked-out top-level submodule local and remote-tracking refs that match the resolved parent change branch. JSON returns `submoduleBranchDiagnostics[]` with stable codes `submodule_change_branch_local` and `submodule_change_branch_remote_tracking`; remote-tracking entries are local observations and do not prove a live or merged remote branch. Parent `branchCleanup` never includes these refs, and default finish does not fetch, switch, delete, or push submodule branches.
+**Finish + parent multi-head cleanup:** after worktree handling, unless `--keep-branch`, finish attempts safe parent branch prune for a bounded set: **change-default** (`defaultBranch(change, --branch)`, normally `<change>`) **and** the **located** worktree branch when different (e.g. worktree switched to `archive-<change>` after the feature PR). Each head is gated independently by a merged PR for that head; unmerged heads are kept. Local delete uses `git branch -d` only (never `-D`). JSON `branchCleanup` keeps aggregate fields plus `branchCleanup.heads[]` per candidate. This closes leftover change-named branch hygiene after archive branch switch (issue #46). OpenSpec archive is an artifact move—prefer staying on the change-default git branch when practical.
+
+**Finish + submodules:** before `git worktree remove`, finish records read-only diagnostics for checked-out top-level submodule local and remote-tracking refs that match the resolved parent **located** branch. JSON returns `submoduleBranchDiagnostics[]` with stable codes `submodule_change_branch_local` and `submodule_change_branch_remote_tracking`; remote-tracking entries are local observations and do not prove a live or merged remote branch. Parent `branchCleanup` never includes these refs, and default finish does not fetch, switch, delete, or push submodule branches.
 
 Finish then **deinits** initialized top-level submodules in the change worktree (`git submodule deinit -f -- <path>`) while preserving hollow gitlink paths so the parent remains clean. If ordinary removal hits Git's structural submodule-containment rule, finish freshly verifies the worktree is clean and performs one controlled internal `worktree remove --force`. This structural mechanism is not operator permission to discard data: dirty parent/submodule trees still require explicit operator `--force`, and `result.forced` only reports operator-authorized dirty discard. Persistent containment returns `submodule_teardown_failed` with an actionable hint.
 
@@ -291,7 +293,7 @@ After each lifecycle step, use **`/ops-next [change]` (omit name to pick among c
 | `where <change>` | Print workspace path (strict: exit 5 if missing); includes `submodules[]` |
 | `ship <change>` | Commit entire worktree, push branch, open/reuse PR via `gh` (no merge/force) |
 | `merge <change>` | Merge open PR via `gh` (default squash; non-empty checks must pass; empty checks allowed by default; no chain) |
-| `finish <change>` | Remove worktree; if PR **merged**, delete local+remote branch (unless `--keep-branch`). Deinits submodules. Dirty → `--force` |
+| `finish <change>` | Remove worktree; if PR **merged**, delete local+remote parent heads for **change-default ∪ located** branch (unless `--keep-branch`). Deinits submodules. Dirty → `--force` |
 | `prune <change>` | **Deprecated** — prefer finish; branch-only if no worktree + merged |
 | `doctor` | Read-only health report (stale dirs, submodules, change_location_mismatch, …) |
 

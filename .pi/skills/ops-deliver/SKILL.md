@@ -115,7 +115,9 @@ Use action ids from the table (`ops-start`, `opsx-propose`, `ops-spec-review`, `
 
 ## Lifecycle success vs return-to-main
 
-Completing deliver through **finish** means the change worktree closeout path succeeded (and PR merge/archive as applicable). It does **not** mean the operator’s **primary** checkout already matches `origin/<base>` or that submodules are on branch `main`.
+Completing deliver through **finish** means the change worktree closeout path succeeded (and PR merge/archive as applicable). Finish also attempts parent multi-head branch hygiene: the **change-default** head (normally `<change>`) and a different **located** worktree head each get independent merged-PR gated cleanup—so a leftover change-named parent branch after an archive branch switch should not require a separate deprecated `ops-prune` on the happy path. Default finish still does **not** delete submodule feature remotes/branches (diagnostics only). Prefer performing OpenSpec archive while the worktree remains on the change-default git branch when practical.
+
+It does **not** mean the operator’s **primary** checkout already matches `origin/<base>` or that submodules are on branch `main`.
 
 Primary lagging `origin/main` alone is **not** a failed deliver when sync was not requested. With effective `finish.return-to-main=required`, lifecycle success additionally requires strict primary/submodule closeout (including attach); `return_to_main_needs_human` is a hard stop, not completion. With `primary-only`, deliver requires primary ff sync and submodule pin update without branch attach. After success, operators (or opt-in finish flags) may:
 

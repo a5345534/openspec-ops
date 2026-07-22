@@ -315,6 +315,31 @@ export interface SubmoduleBranchDiagnostic {
   current: boolean;
 }
 
+/** Per-candidate parent head outcome from finish multi-head cleanup. */
+export interface FinishBranchCleanupHead {
+  branch: string;
+  attempted: boolean;
+  localDeleted: boolean;
+  localAlreadyAbsent: boolean;
+  remoteDeleted: boolean;
+  remoteAlreadyAbsent: boolean;
+  keptReason: "not_merged" | "keep_flag" | null;
+  mergedPr: { number: number; url: string } | null;
+}
+
+/** Aggregate + per-head parent cleanup (submodule refs never included). */
+export interface FinishBranchCleanup {
+  attempted: boolean;
+  localDeleted: boolean;
+  localAlreadyAbsent: boolean;
+  remoteDeleted: boolean;
+  remoteAlreadyAbsent: boolean;
+  keptReason: "not_merged" | "keep_flag" | null;
+  mergedPr: { number: number; url: string } | null;
+  /** One entry per distinct candidate head (change-default ∪ located). */
+  heads: FinishBranchCleanupHead[];
+}
+
 export interface FinishResult {
   action: "removed" | "removed_and_pruned" | "pruned_only" | "already_clean";
   change: string;
@@ -328,15 +353,7 @@ export interface FinishResult {
   remote: string;
   /** Read-only pre-teardown observations; parent branchCleanup never covers these refs. */
   submoduleBranchDiagnostics: SubmoduleBranchDiagnostic[];
-  branchCleanup: {
-    attempted: boolean;
-    localDeleted: boolean;
-    localAlreadyAbsent: boolean;
-    remoteDeleted: boolean;
-    remoteAlreadyAbsent: boolean;
-    keptReason: "not_merged" | "keep_flag" | null;
-    mergedPr: { number: number; url: string } | null;
-  };
+  branchCleanup: FinishBranchCleanup;
   /** Always present for agent parse stability */
   closeoutHints: FinishCloseoutHints;
   sync: FinishSyncResult;
