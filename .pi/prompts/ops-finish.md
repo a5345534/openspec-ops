@@ -134,7 +134,8 @@ Failure:
 
    Optional notes:
 
-   - If PR is merged and `--keep-branch` was not set, local+remote branch may be deleted.
+   - If merged PRs are verified and `--keep-branch` was not set, local+remote parent heads for change-default ∪ located (when different) may be deleted independently; see `branchCleanup.heads`.
+   - Prefer OpenSpec archive on the change-default git branch; default finish does not delete submodule feature branches.
    - Archive remains `/opsx-archive` on the appropriate checkout.
 
 ## Return-to-main policy

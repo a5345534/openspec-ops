@@ -15,7 +15,7 @@ import {
 } from "../doctor/primary-closeout.js";
 import { locateWorkspace } from "./where.js";
 import {
-  cleanupMergedChangeBranches,
+  cleanupMergedParentHeads,
   type BranchCleanupDeps,
   defaultBranchCleanupDeps,
 } from "./branch-cleanup.js";
@@ -43,7 +43,7 @@ export type FinishDeps = {
   prepare: typeof prepareWorktreeForRemoval;
   isDirty: typeof isDirty;
   removeWorktree: typeof removeWorktree;
-  branchCleanup: typeof cleanupMergedChangeBranches;
+  branchCleanup: typeof cleanupMergedParentHeads;
   probeBranches?: typeof probeMatchingSubmoduleBranches;
   branchCleanupDeps?: BranchCleanupDeps;
   finishSyncDeps?: FinishSyncDeps;
@@ -56,7 +56,7 @@ const defaultFinishDeps: FinishDeps = {
   prepare: prepareWorktreeForRemoval,
   isDirty,
   removeWorktree,
-  branchCleanup: cleanupMergedChangeBranches,
+  branchCleanup: cleanupMergedParentHeads,
 };
 
 export function runFinish(
@@ -65,7 +65,7 @@ export function runFinish(
 ): FinishResult {
   const change = assertChangeName(options.change);
   const ctx = deps.resolveRepo(options.repo);
-  const branch = defaultBranch(change, options.branch);
+  const changeDefaultBranch = defaultBranch(change, options.branch);
   const remote = options.remote ?? "origin";
   const keepBranch = Boolean(options.keepBranch);
   const force = Boolean(options.force);
@@ -77,7 +77,7 @@ export function runFinish(
   let worktreeRemoved = false;
   let path: string | null = null;
   let dirty = false;
-  let locatedBranch = branch;
+  let locatedBranch = changeDefaultBranch;
   let submoduleBranchDiagnostics: FinishResult["submoduleBranchDiagnostics"] = [];
 
   const syncDeps = deps.finishSyncDeps ?? defaultFinishSyncDeps;
@@ -180,7 +180,8 @@ export function runFinish(
     {
       change,
       cwd: ctx.primaryPath,
-      branch: locatedBranch,
+      changeDefaultBranch,
+      locatedBranch,
       remote,
       keepBranch,
     },
@@ -207,8 +208,8 @@ export function runFinish(
     // nothing to remove and cannot prune
     throw new CliError(
       "not_found",
-      `No worktree for '${change}' and no merged PR to clean up for branch '${locatedBranch}'.`,
-      { change, branch: locatedBranch },
+      `No worktree for '${change}' and no merged PR to clean up for branch(es) '${cleanup.heads.map((h) => h.branch).join(", ") || locatedBranch}'.`,
+      { change, branch: locatedBranch, heads: cleanup.heads.map((h) => h.branch) },
     );
   } else if (!worktreeRemoved && cleanup.keptReason === "keep_flag") {
     throw new CliError(
@@ -340,9 +341,27 @@ export function runFinish(
       mergedPr: cleanup.mergedPr
         ? { number: cleanup.mergedPr.number, url: cleanup.mergedPr.url }
         : null,
+      heads: cleanup.heads,
     },
     closeoutHints,
     sync,
+  };
+
+  const summarizeHead = (head: (typeof cleanup.heads)[number]): string => {
+    if (head.keptReason === "keep_flag") return `${head.branch}: kept (--keep-branch)`;
+    if (head.keptReason === "not_merged") return `${head.branch}: kept (PR not merged)`;
+    const local = head.localDeleted
+      ? "local deleted"
+      : head.localAlreadyAbsent
+        ? "local absent"
+        : "local kept";
+    const remoteSide = head.remoteDeleted
+      ? "remote deleted"
+      : head.remoteAlreadyAbsent
+        ? "remote absent"
+        : "remote kept";
+    const pr = head.mergedPr ? ` pr #${head.mergedPr.number}` : "";
+    return `${head.branch}: ${local}, ${remoteSide}${pr}`;
   };
 
   const branchLine = keepBranch
@@ -375,6 +394,7 @@ export function runFinish(
       ...(cleanup.mergedPr
         ? [`pr:      #${cleanup.mergedPr.number} ${cleanup.mergedPr.url}`]
         : []),
+      ...cleanup.heads.map((head) => `cleanup: ${summarizeHead(head)}`),
       ...submoduleBranchDiagnostics.map((diagnostic) =>
         diagnostic.code === "submodule_change_branch_local"
           ? `submodule residual: ${diagnostic.path} local ${diagnostic.branch}${diagnostic.current ? " (current)" : ""}; not pruned`

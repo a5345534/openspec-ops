@@ -18,9 +18,10 @@ metadata:
 
 Follow the injected `REQUIRED RESPONSE LANGUAGE` for all progress, findings, verdicts, hard stops, and summaries. English examples are structural templates: translate their natural-language meaning while preserving commands, paths, identifiers, error codes, JSON keys, URLs, and metrics markers exactly.
 
-Remove change **worktree** when present. If the PR is **merged** (gh), also delete
-**local + remote** branch unless `--keep-branch`. Not an OpenSpec archive.
-`prune` is deprecated—prefer finish for closeout.
+Remove change **worktree** when present. If merged PRs are verified (gh), also delete
+**local + remote parent** branches for the **change-default** head and the **located**
+worktree head when they differ (each head gated independently), unless `--keep-branch`.
+Not an OpenSpec archive. `prune` is deprecated—prefer finish for closeout.
 
 ## Shared runtime rules
 
@@ -160,10 +161,13 @@ Effective `finish.return-to-main=off` preserves the non-mutating default. Effect
 After removing the worktree (if any):
 - `submoduleBranchDiagnostics` are read-only pre-teardown observations; remote-tracking refs may be stale, parent cleanup does not cover them, and default finish never deletes them
 - Clean worktrees with submodule gitlinks may require a CLI-internal, clean-gated structural `git worktree remove --force`; this is not operator `--force`, does not authorize dirty discard, and still reports `forced: false`
-- If PR for the change branch is **merged** → delete local (`-d`) and remote branch (unless `--keep-branch`)
-- If **not** merged → keep branch
-- No worktree + merged → branch-only cleanup still OK
-- Prefer `finish` over deprecated `prune`
+- Parent multi-head cleanup candidates: change-default (`defaultBranch(change, --branch)`, normally `<change>`) ∪ located worktree branch when different
+- For **each** candidate head with a **merged** PR → delete local (`-d`) and remote (unless `--keep-branch`); unmerged heads stay; one head’s merge does not authorize deleting another
+- JSON includes aggregate `branchCleanup` plus `branchCleanup.heads[]` per candidate
+- Prefer OpenSpec archive while still on the change-default git branch; switching solely to `archive-*` changes the located head, but finish still attempts change-default prune when that PR is merged
+- Residual change-named parent branches after an archive branch switch are the hygiene case multi-head cleanup addresses
+- No worktree + merged → branch-only cleanup still OK (change-default path)
+- Prefer `finish` over deprecated `prune`; default finish does **not** delete submodule feature branches/remotes
 
 ## After finish
 

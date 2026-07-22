@@ -178,6 +178,7 @@ describe("runFinish submodule containment retry", () => {
         remoteAlreadyAbsent: true,
         keptReason: "not_merged" as const,
         mergedPr: null,
+        heads: [],
       })),
       ...overrides,
     };
@@ -391,8 +392,9 @@ describe("runFinish real submodule gitlink integration", () => {
         localAlreadyAbsent: false,
         remoteDeleted: false,
         remoteAlreadyAbsent: false,
-        keptReason: "not_merged",
+        keptReason: "not_merged" as const,
         mergedPr: null,
+        heads: [],
       }),
       detectBehind: () => ({
         behind: false,

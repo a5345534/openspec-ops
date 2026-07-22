@@ -425,7 +425,8 @@ describe("runFinish sync integration", () => {
         localAlreadyAbsent: false,
         remoteDeleted: false,
         remoteAlreadyAbsent: false,
-        keptReason: "not_merged",
+        keptReason: "not_merged" as const,
+        heads: [],
       }),
       detectBehind: () => ({
         behind: true,

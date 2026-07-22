@@ -1,7 +1,11 @@
 import { branchExists, runGit } from "../git.js";
 import { resolveMergeStatusBackend } from "../ship/backends/gh.js";
 import type { MergedPullRequest } from "../ship/pr-backend.js";
-import { CliError } from "../types.js";
+import {
+  CliError,
+  type FinishBranchCleanup,
+  type FinishBranchCleanupHead,
+} from "../types.js";
 
 export type BranchCleanupDeps = {
   findMergedPr: (input: { cwd: string; head: string }) => MergedPullRequest | null;
@@ -162,4 +166,161 @@ export function cleanupMergedChangeBranches(
     remoteAlreadyAbsent,
     keptReason: null,
   };
+}
+
+/**
+ * Bounded parent cleanup candidates: change-default ∪ located (deduped, stable order).
+ * change-default is `defaultBranch(change, --branch)` (normally the change name).
+ */
+export function parentCleanupCandidateBranches(
+  changeDefaultBranch: string,
+  locatedBranch: string,
+): string[] {
+  if (changeDefaultBranch === locatedBranch) return [changeDefaultBranch];
+  return [changeDefaultBranch, locatedBranch];
+}
+
+function headFromResult(
+  branch: string,
+  result: BranchCleanupResult,
+): FinishBranchCleanupHead {
+  return {
+    branch,
+    attempted: result.attempted,
+    localDeleted: result.localDeleted,
+    localAlreadyAbsent: result.localAlreadyAbsent,
+    remoteDeleted: result.remoteDeleted,
+    remoteAlreadyAbsent: result.remoteAlreadyAbsent,
+    keptReason: result.keptReason,
+    mergedPr: result.mergedPr
+      ? { number: result.mergedPr.number, url: result.mergedPr.url }
+      : null,
+  };
+}
+
+function aggregateHeadResults(
+  heads: FinishBranchCleanupHead[],
+  changeDefaultBranch: string,
+): FinishBranchCleanup {
+  if (heads.length === 0) {
+    return {
+      attempted: false,
+      localDeleted: false,
+      localAlreadyAbsent: false,
+      remoteDeleted: false,
+      remoteAlreadyAbsent: false,
+      keptReason: "not_merged",
+      mergedPr: null,
+      heads: [],
+    };
+  }
+
+  const anyKeepFlag = heads.every((h) => h.keptReason === "keep_flag");
+  if (anyKeepFlag) {
+    return {
+      attempted: false,
+      localDeleted: false,
+      localAlreadyAbsent: false,
+      remoteDeleted: false,
+      remoteAlreadyAbsent: false,
+      keptReason: "keep_flag",
+      mergedPr: null,
+      heads,
+    };
+  }
+
+  const attemptedHeads = heads.filter((h) => h.attempted);
+  const anyDeleted = heads.some((h) => h.localDeleted || h.remoteDeleted);
+  const anyAttempted = attemptedHeads.length > 0;
+
+  let keptReason: FinishBranchCleanup["keptReason"] = null;
+  if (!anyDeleted && !anyAttempted) {
+    // All soft-skipped (not_merged) or empty attempts
+    keptReason = heads.some((h) => h.keptReason === "not_merged")
+      ? "not_merged"
+      : null;
+  } else if (!anyDeleted && anyAttempted) {
+    // Attempted but already absent only → not kept
+    keptReason = null;
+  }
+
+  const preferred =
+    heads.find((h) => h.branch === changeDefaultBranch && h.mergedPr) ??
+    heads.find((h) => h.mergedPr) ??
+    null;
+
+  const localAlreadyAbsent =
+    anyAttempted && attemptedHeads.every((h) => h.localAlreadyAbsent);
+  const remoteAlreadyAbsent =
+    anyAttempted && attemptedHeads.every((h) => h.remoteAlreadyAbsent);
+
+  return {
+    attempted: anyAttempted,
+    localDeleted: heads.some((h) => h.localDeleted),
+    localAlreadyAbsent,
+    remoteDeleted: heads.some((h) => h.remoteDeleted),
+    remoteAlreadyAbsent,
+    keptReason,
+    mergedPr: preferred?.mergedPr ?? null,
+    heads,
+  };
+}
+
+/**
+ * Run merged-PR cleanup for each distinct parent candidate head and aggregate.
+ */
+export function cleanupMergedParentHeads(
+  input: {
+    change: string;
+    cwd: string;
+    changeDefaultBranch: string;
+    locatedBranch: string;
+    remote: string;
+    keepBranch: boolean;
+    strictPrLookup?: boolean;
+  },
+  deps: BranchCleanupDeps = defaultBranchCleanupDeps,
+): FinishBranchCleanup {
+  const candidates = parentCleanupCandidateBranches(
+    input.changeDefaultBranch,
+    input.locatedBranch,
+  );
+
+  if (input.keepBranch) {
+    const heads = candidates.map((branch) =>
+      headFromResult(
+        branch,
+        cleanupMergedChangeBranches(
+          {
+            change: input.change,
+            cwd: input.cwd,
+            branch,
+            remote: input.remote,
+            keepBranch: true,
+            strictPrLookup: input.strictPrLookup,
+          },
+          deps,
+        ),
+      ),
+    );
+    return aggregateHeadResults(heads, input.changeDefaultBranch);
+  }
+
+  const heads = candidates.map((branch) =>
+    headFromResult(
+      branch,
+      cleanupMergedChangeBranches(
+        {
+          change: input.change,
+          cwd: input.cwd,
+          branch,
+          remote: input.remote,
+          keepBranch: false,
+          strictPrLookup: input.strictPrLookup,
+        },
+        deps,
+      ),
+    ),
+  );
+  return aggregateHeadResults(heads, input.changeDefaultBranch);
 }
